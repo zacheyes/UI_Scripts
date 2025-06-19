@@ -9,7 +9,7 @@ import shutil
 
 def main():
     # Define default STEP export paths based on operating system
-    if sys.platform == "darwin":  # macOS
+    if sys.platform == "darwin":  # mac
         default_step_export_one = "/Volumes/Work_In_Progress/2024_DAM_DI_Projects/_STEP Export/STEP_Export_one.xlsx"
         default_step_export_two = "/Volumes/Work_In_Progress/2024_DAM_DI_Projects/_STEP Export/STEP_Export_two.xlsx"
     elif os.name == "nt":  # Windows

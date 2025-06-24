@@ -12,7 +12,7 @@ import filecmp
 import threading
 import pandas as pd
 
-# --- Configurationz ---
+# --- Configuration ---
 # Define your GitHub repository details
 GITHUB_USERNAME = "zacheyes"  # Updated with your GitHub username
 GITHUB_REPO_NAME = "UI_Scripts"  # Updated with your public repository name
@@ -152,7 +152,7 @@ def _run_script_with_progress(script_full_path, args, log_output_widget, progres
             env['PYTHONIOENCODING'] = 'utf-8'
 
             process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
-                                      bufsize=1, universal_newlines=True, env=env)
+                                       bufsize=1, universal_newlines=True, env=env)
 
             def read_stream(stream, buffer, is_stderr=False):
                 for line in stream:
@@ -346,6 +346,7 @@ class RenamerApp:
         # Initialize these with defaults; they will be loaded later
         self.scripts_root_folder = tk.StringVar(value=os.path.dirname(os.path.abspath(__file__)))
         self.last_update_timestamp = tk.StringVar(value="Last update: Never")
+        self.gui_last_update_timestamp = tk.StringVar(value="Last GUI update: Never") # NEW: For GUI update button
         
         # All other variables reset to default on launch
         self.check_psa_sku_spreadsheet_path = tk.StringVar(value="")
@@ -423,6 +424,7 @@ class RenamerApp:
             "theme": self.current_theme.get(),
             "scripts_root_folder": self.scripts_root_folder.get(),
             "last_update": self.last_update_timestamp.get(),
+            "gui_last_update": self.gui_last_update_timestamp.get(), # NEW: Save GUI update timestamp
         }
         try:
             with open(CONFIG_FILE, 'w') as f:
@@ -450,6 +452,14 @@ class RenamerApp:
                     self.last_update_timestamp.set(f"Last update: {last_update_from_config}")
                 else:
                     self.last_update_timestamp.set(last_update_from_config)
+
+                # NEW: Load GUI update timestamp
+                gui_last_update_from_config = config_data.get("gui_last_update", "Last GUI update: Never")
+                if not gui_last_update_from_config.startswith("Last GUI update:"):
+                    self.gui_last_update_timestamp.set(f"Last GUI update: {gui_last_update_from_config}")
+                else:
+                    self.gui_last_update_timestamp.set(gui_last_update_from_config)
+
 
                 self.log_print("Configuration loaded successfully.\n")
             except json.JSONDecodeError as e:
@@ -852,7 +862,7 @@ class RenamerApp:
     def _check_for_gui_update(self):
         """Checks for a new version of the GUI script and updates/restarts if available."""
         self.log_print("\n--- Checking for GUI script update ---")
-        local_gui_path = os.path.abspath(__file__) # Path to the running GUI script
+        local_gui_path = os.path.abspath(sys.argv[0]) # Get path of the currently running script
         github_url = GITHUB_SCRIPT_URLS.get(GUI_SCRIPT_FILENAME)
         
         if not github_url:
@@ -891,6 +901,11 @@ class RenamerApp:
                 # Copying and then restarting Python makes the new script load.
                 shutil.copy(temp_download_path, local_gui_path) 
                 os.remove(temp_download_path) # Clean up temp file
+
+                # Update GUI last update timestamp
+                current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                self.gui_last_update_timestamp.set(f"Last GUI update: {current_time}")
+                self._save_configuration() # Save updated timestamp
 
                 self.log_print("GUI script updated successfully. Restarting application...\n")
 
@@ -1489,26 +1504,40 @@ class RenamerApp:
         top_bar_frame = ttk.Frame(self.master, style='TFrame')
         top_bar_frame.grid(row=0, column=0, padx=(10, 10), pady=(2, 2), sticky="new")  
         
-        # Adjust column weights to accommodate the new button
-        top_bar_frame.grid_columnconfigure(0, weight=0) # Update All Scripts button
-        top_bar_frame.grid_columnconfigure(1, weight=0) # Last Update Label
-        top_bar_frame.grid_columnconfigure(2, weight=0) # New Update GUI button
-        top_bar_frame.grid_columnconfigure(3, weight=1) # Spacer for Theme selector
+        # Adjust column weights to accommodate the new button and labels
+        top_bar_frame.grid_columnconfigure(0, weight=1) # Left side for Update All Scripts (gets remaining space)
+        top_bar_frame.grid_columnconfigure(1, weight=1) # Update GUI button (gets remaining space)
+        top_bar_frame.grid_columnconfigure(2, weight=0) # Theme selector (fixed size)
 
-        self.update_all_scripts_button = ttk.Button(top_bar_frame, text="Update All Scripts", command=self._update_all_scripts, style='TButton')
-        self.update_all_scripts_button.grid(row=0, column=0, padx=(0, 10), sticky="w")  
+        # Frame for "Update All Scripts" button and its label
+        update_all_scripts_section = ttk.Frame(top_bar_frame, style='TFrame')
+        update_all_scripts_section.grid(row=0, column=0, padx=(0, 10), sticky="w") # Now takes column 0
+        update_all_scripts_section.grid_columnconfigure(0, weight=1) # Make button expandable
+        
+        self.update_all_scripts_button = ttk.Button(update_all_scripts_section, text="Update All Scripts", command=self._update_all_scripts, style='TButton')
+        self.update_all_scripts_button.pack(fill="x", expand=True) # Fill and expand within its frame
         Tooltip(self.update_all_scripts_button, "Checks GitHub for updated versions of Python scripts and downloads them to your local scripts folder if newer versions are available. If a script is missing, it will download it.", self.secondary_bg, self.text_color)
+        
+        self.last_update_label = ttk.Label(update_all_scripts_section, textvariable=self.last_update_timestamp, style='TLabel')
+        self.last_update_label.pack(pady=(2,0)) # Small padding below button
 
-        self.last_update_label = ttk.Label(top_bar_frame, textvariable=self.last_update_timestamp, style='TLabel')
-        self.last_update_label.grid(row=0, column=1, padx=(0, 10), sticky="w")
 
-        # New: Update GUI Button
-        self.check_gui_update_button = ttk.Button(top_bar_frame, text="Update GUI", command=self._check_for_gui_update, style='TButton')
-        self.check_gui_update_button.grid(row=0, column=2, padx=(0, 10), sticky="w") 
+        # Frame for "Update GUI" button and its label (NEW)
+        update_gui_section = ttk.Frame(top_bar_frame, style='TFrame')
+        update_gui_section.grid(row=0, column=1, padx=(0, 10), sticky="w") # Now takes column 1
+        update_gui_section.grid_columnconfigure(0, weight=1) # Make button expandable
+
+        self.check_gui_update_button = ttk.Button(update_gui_section, text="Update GUI", command=self._check_for_gui_update, style='TButton')
+        self.check_gui_update_button.pack(fill="x", expand=True) # Fill and expand within its frame
         Tooltip(self.check_gui_update_button, "Checks for and applies updates to this GUI application itself, then restarts.", self.secondary_bg, self.text_color)
+        
+        self.gui_last_update_label = ttk.Label(update_gui_section, textvariable=self.gui_last_update_timestamp, style='TLabel')
+        self.gui_last_update_label.pack(pady=(2,0)) # Small padding below button
 
+
+        # Theme selector (moved to a new column 2)
         theme_frame = ttk.Frame(top_bar_frame, style='TFrame')
-        theme_frame.grid(row=0, column=3, sticky="e") # Moved to column 3
+        theme_frame.grid(row=0, column=2, sticky="e") 
         
         self.theme_label = ttk.Label(theme_frame, text="Theme:", style='TLabel')
         self.theme_label.pack(side="left", padx=(0, 5))

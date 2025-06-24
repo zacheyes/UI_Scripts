@@ -22,6 +22,7 @@ def process_image(file_path, output_dir, canvas_size=(3000, 1688), margin=10):
     4. Scales the cropped content to fit within the specified canvas size, respecting margins.
     5. Pastes the resized content onto a white background canvas, centered.
     6. Saves the result to the output directory.
+    Returns True for success, False for skip/error.
     """
     try:
         # Open image with alpha so we can detect transparency too
@@ -110,7 +111,6 @@ def main():
     os.makedirs(output_dir, exist_ok=True)
 
     # Supported extensions
-    # Pillow handles many formats, but let's be explicit for common ones
     exts = (".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".gif")
 
     print(f"\nProcessing images in: {input_folder}")
@@ -124,28 +124,37 @@ def main():
 
     if not image_files:
         print("No supported image files found in the specified folder. Exiting.")
+        # Report 0% progress if no files to process
+        print("PROGRESS: 0")
         sys.exit(0)
 
-    for fname in image_files:
+    total_files = len(image_files)
+
+    for i, fname in enumerate(image_files):
         file_path = os.path.join(input_folder, fname)
-        if process_image(file_path, output_dir):
+        
+        # Call the image processing function
+        success = process_image(file_path, output_dir)
+        
+        if success:
             processed_count += 1
         else:
-            # The process_image function already prints whether it was skipped or an error
-            # We can refine this if needed, but for now, it's counted as 'not processed successfully'
-            # For simplicity, count as error if process_image returns False, and refine message inside.
-            # A more detailed return from process_image could distinguish.
-            if "Skipped" in open(sys.stdout.fileno(), 'r', encoding='utf-8', buffering=1).read(-1): # Hacky way to check print output, better to change function return
-                 skipped_count += 1
-            else:
-                 error_count += 1
+            # Currently, process_image returns False for both skips and errors.
+            # For a more accurate summary, you'd need process_image to return an enum or specific codes.
+            # For this example, we'll increment error_count for simplicity if it wasn't successful.
+            # If you want to differentiate skips, you'd modify process_image to return a distinct value for "skipped".
+            error_count += 1 # Or add a specific skipped_count if process_image returns a different signal for skips
 
+        # Calculate progress and print for the UI
+        progress_percent = (i + 1) / total_files * 100
+        print(f"PROGRESS: {progress_percent:.1f}")
+        sys.stdout.flush() # Ensure the progress is sent immediately
 
     print(f"\n--- Processing Summary ---")
-    print(f"Total image files found: {len(image_files)}")
+    print(f"Total image files found: {total_files}")
     print(f"Successfully processed: {processed_count}")
-    print(f"Skipped (no content or zero dimensions): {skipped_count}")
-    print(f"Failed (with errors): {error_count}")
+    # Note: If process_image returns False for both skips and errors, error_count will include skips.
+    print(f"Failed or Skipped: {error_count}") # Combined for simplicity without deeper return logic in process_image
     print(f"All done! Processed images are in: {output_dir}")
     
     if error_count > 0:

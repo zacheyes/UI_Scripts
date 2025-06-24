@@ -12,13 +12,18 @@ import filecmp
 import threading
 import pandas as pd
 
-# --- Configuration --- zzzzzz
+# --- Configurationz ---
 # Define your GitHub repository details
 GITHUB_USERNAME = "zacheyes"  # Updated with your GitHub username
 GITHUB_REPO_NAME = "UI_Scripts"  # Updated with your public repository name
 # This base URL points to the root of the 'main' branch for raw content.
 # Ensure your scripts are directly in the root of the 'main' branch in your GitHub repo.
 GITHUB_RAW_BASE_URL = f"https://raw.githubusercontent.com/{GITHUB_USERNAME}/{GITHUB_REPO_NAME}/main/" # Updated base URL
+
+# --- GUI Script specific constants ---
+GUI_SCRIPT_FILENAME = "GUI.py" # Make sure this matches your actual GUI script's filename
+UPDATE_IN_PROGRESS_MARKER = "gui_update_in_progress.tmp"
+
 
 SCRIPT_FILENAMES = {
     "Main Renaminator Script": "renaminator.py",
@@ -37,7 +42,7 @@ SCRIPT_FILENAMES = {
     "Get Measurements script": "get_MeasurementsFromSTEP.py",
 }
 
-# NEW: GitHub URLs for Python scripts
+# NEW: GitHub URLs for Python scripts (updated to include GUI.py)
 GITHUB_SCRIPT_URLS = {
     "renaminator.py": GITHUB_RAW_BASE_URL + "renaminator.py",
     "renaminatorDL.py": GITHUB_RAW_BASE_URL + "renaminatorDL.py",
@@ -52,6 +57,8 @@ GITHUB_SCRIPT_URLS = {
     "check_BynderPSAs.py": GITHUB_RAW_BASE_URL + "check_BynderPSAs.py",
     "downloadPSAs.py": GITHUB_RAW_BASE_URL + "downloadPSAs.py",
     "get_MeasurementsFromSTEP.py": GITHUB_RAW_BASE_URL + "get_MeasurementsFromSTEP.py",
+    # Add the GUI script itself to the list of URLs
+    GUI_SCRIPT_FILENAME: GITHUB_RAW_BASE_URL + GUI_SCRIPT_FILENAME,
 }
 
 # KEPT FROM BYNDER as requested
@@ -328,6 +335,9 @@ class RenamerApp:
         self.header_font = tkFont.Font(family="Arial", size=12, weight="bold")
         self.log_font = tkFont.Font(family="Consolas", size=9)
 
+        # Flag to prevent saving config during an update-restart
+        self._restarting_for_update = False
+
         self._initialize_logger_widget()
 
         # Set default theme colors *before* creating widgets
@@ -380,6 +390,9 @@ class RenamerApp:
         self.log_print(f"UI launched with Python {sys.version.split(' ')[0]} from: {sys.executable}\n")
         self.log_print("UI initialized. Please select paths and run operations.\n")
 
+        # Handle potential update marker on startup
+        self.master.after(100, self._handle_startup_update_check)
+
         master.protocol("WM_DELETE_WINDOW", self._on_closing)
 
     def _initialize_logger_widget(self):
@@ -400,7 +413,9 @@ class RenamerApp:
 
 
     def _on_closing(self):
-        self._save_configuration()
+        # Only save configuration if not restarting for an update
+        if not self._restarting_for_update:
+            self._save_configuration()
         self.master.destroy()
 
     def _save_configuration(self):
@@ -833,6 +848,82 @@ class RenamerApp:
             messagebox.showinfo("Update Complete", "No scripts were updated, downloaded, or encountered errors. All checked scripts are already up to date.")
             
         self._save_configuration()
+
+    def _check_for_gui_update(self):
+        """Checks for a new version of the GUI script and updates/restarts if available."""
+        self.log_print("\n--- Checking for GUI script update ---")
+        local_gui_path = os.path.abspath(__file__) # Path to the running GUI script
+        github_url = GITHUB_SCRIPT_URLS.get(GUI_SCRIPT_FILENAME)
+        
+        if not github_url:
+            self.log_print("Error: GUI script URL not found in configuration.", is_stderr=True)
+            messagebox.showerror("Update Error", "GUI script URL not configured.")
+            return
+
+        temp_download_path = local_gui_path + ".new_version_tmp" # Use a distinct temp name
+
+        try:
+            # 1. Download the latest GUI script from GitHub
+            self.log_print(f"Downloading latest GUI from: {github_url}")
+            response = requests.get(github_url, stream=True)
+            response.raise_for_status() # Raise an exception for bad status codes
+
+            with open(temp_download_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            
+            # 2. Compare with local version
+            if os.path.exists(local_gui_path) and filecmp.cmp(local_gui_path, temp_download_path, shallow=False):
+                self.log_print("GUI script is already up to date.\n")
+                os.remove(temp_download_path) # Clean up temp file
+                messagebox.showinfo("Update Check", "The GUI is already up to date!")
+                return
+            else:
+                self.log_print("New version of GUI script found. Applying update...")
+                
+                # 3. Apply Update and Restart
+                # Create a marker file to indicate an update is in progress
+                with open(UPDATE_IN_PROGRESS_MARKER, 'w') as f:
+                    f.write(str(os.getpid())) # Write current PID for debugging/verification
+
+                # Replace the old script with the new one
+                # On Windows, direct overwrite of running script is hard.
+                # Copying and then restarting Python makes the new script load.
+                shutil.copy(temp_download_path, local_gui_path) 
+                os.remove(temp_download_path) # Clean up temp file
+
+                self.log_print("GUI script updated successfully. Restarting application...\n")
+
+                messagebox.showinfo("Update Complete", "The GUI has been updated. The application will now restart to apply changes.")
+                
+                # Set flag before restarting
+                self._restarting_for_update = True
+                
+                # Restart the application - this replaces the current process
+                python = sys.executable
+                os.execl(python, python, *sys.argv) 
+        
+        except requests.exceptions.RequestException as e:
+            self.log_print(f"Error checking/downloading GUI update: {e}\n", is_stderr=True)
+            messagebox.showerror("Update Error", f"Failed to check for GUI update: {e}")
+        except Exception as e:
+            self.log_print(f"An unexpected error occurred during GUI update: {e}\n", is_stderr=True)
+            messagebox.showerror("Update Error", f"An unexpected error occurred during GUI update: {e}")
+        finally:
+            if os.path.exists(temp_download_path):
+                try:
+                    os.remove(temp_download_path) # Ensure temp file is cleaned up on error too
+                except Exception as e:
+                    self.log_print(f"Warning: Could not remove temporary download file: {e}", is_stderr=True)
+
+    def _handle_startup_update_check(self):
+        """Checks for and cleans up the update marker file on startup."""
+        if os.path.exists(UPDATE_IN_PROGRESS_MARKER):
+            try:
+                os.remove(UPDATE_IN_PROGRESS_MARKER)
+                self.log_print("GUI update completed successfully. Welcome back!", 'success')
+            except Exception as e:
+                self.log_print(f"Warning: Could not remove update marker file: {e}", is_stderr=True)
 
     # MODIFIED: _download_renamer_excel method is the same, but its button is moved
     def _download_renamer_excel(self):
@@ -1398,21 +1489,27 @@ class RenamerApp:
         top_bar_frame = ttk.Frame(self.master, style='TFrame')
         top_bar_frame.grid(row=0, column=0, padx=(10, 10), pady=(2, 2), sticky="new")  
         
-        top_bar_frame.grid_columnconfigure(0, weight=0)
-        top_bar_frame.grid_columnconfigure(1, weight=0)
-        top_bar_frame.grid_columnconfigure(2, weight=1)
+        # Adjust column weights to accommodate the new button
+        top_bar_frame.grid_columnconfigure(0, weight=0) # Update All Scripts button
+        top_bar_frame.grid_columnconfigure(1, weight=0) # Last Update Label
+        top_bar_frame.grid_columnconfigure(2, weight=0) # New Update GUI button
+        top_bar_frame.grid_columnconfigure(3, weight=1) # Spacer for Theme selector
 
         self.update_all_scripts_button = ttk.Button(top_bar_frame, text="Update All Scripts", command=self._update_all_scripts, style='TButton')
         self.update_all_scripts_button.grid(row=0, column=0, padx=(0, 10), sticky="w")  
         Tooltip(self.update_all_scripts_button, "Checks GitHub for updated versions of Python scripts and downloads them to your local scripts folder if newer versions are available. If a script is missing, it will download it.", self.secondary_bg, self.text_color)
 
-
         self.last_update_label = ttk.Label(top_bar_frame, textvariable=self.last_update_timestamp, style='TLabel')
         self.last_update_label.grid(row=0, column=1, padx=(0, 10), sticky="w")
 
-        theme_frame = ttk.Frame(top_bar_frame, style='TFrame')
-        theme_frame.grid(row=0, column=2, sticky="e")
+        # New: Update GUI Button
+        self.check_gui_update_button = ttk.Button(top_bar_frame, text="Update GUI", command=self._check_for_gui_update, style='TButton')
+        self.check_gui_update_button.grid(row=0, column=2, padx=(0, 10), sticky="w") 
+        Tooltip(self.check_gui_update_button, "Checks for and applies updates to this GUI application itself, then restarts.", self.secondary_bg, self.text_color)
 
+        theme_frame = ttk.Frame(top_bar_frame, style='TFrame')
+        theme_frame.grid(row=0, column=3, sticky="e") # Moved to column 3
+        
         self.theme_label = ttk.Label(theme_frame, text="Theme:", style='TLabel')
         self.theme_label.pack(side="left", padx=(0, 5))
         

@@ -14,11 +14,11 @@ import pandas as pd
 
 # --- Configuration ---
 # Define your GitHub repository details
-GITHUB_USERNAME = "zacheyes"  # Updated with your GitHub username
-GITHUB_REPO_NAME = "UI_Scripts"  # Updated with your public repository name
+GITHUB_USERNAME = "zacheyes"
+GITHUB_REPO_NAME = "UI_Scripts"
 # This base URL points to the root of the 'main' branch for raw content.
 # Ensure your scripts are directly in the root of the 'main' branch in your GitHub repo.
-GITHUB_RAW_BASE_URL = f"https://raw.githubusercontent.com/{GITHUB_USERNAME}/{GITHUB_REPO_NAME}/main/" # Updated base URL
+GITHUB_RAW_BASE_URL = f"https://raw.githubusercontent.com/{GITHUB_USERNAME}/{GITHUB_REPO_NAME}/main/"
 
 # --- GUI Script specific constants ---
 GUI_SCRIPT_FILENAME = "GUI.py" # Make sure this matches your actual GUI script's filename
@@ -40,6 +40,8 @@ SCRIPT_FILENAMES = {
     "Check Bynder PSAs script": "check_BynderPSAs.py",
     "Download PSAs script": "downloadPSAs.py",
     "Get Measurements script": "get_MeasurementsFromSTEP.py",
+    "Convert Bynder Metadata to XLS": "convertBynderMetadataToXls.py",
+    "Move Files from Spreadsheet": "move_filename.py", # NEW: Add the new script
 }
 
 # NEW: GitHub URLs for Python scripts (updated to include GUI.py)
@@ -57,8 +59,9 @@ GITHUB_SCRIPT_URLS = {
     "check_BynderPSAs.py": GITHUB_RAW_BASE_URL + "check_BynderPSAs.py",
     "downloadPSAs.py": GITHUB_RAW_BASE_URL + "downloadPSAs.py",
     "get_MeasurementsFromSTEP.py": GITHUB_RAW_BASE_URL + "get_MeasurementsFromSTEP.py",
-    # Add the GUI script itself to the list of URLs
     GUI_SCRIPT_FILENAME: GITHUB_RAW_BASE_URL + GUI_SCRIPT_FILENAME,
+    "convertBynderMetadataToXls.py": GITHUB_RAW_BASE_URL + "convertBynderMetadataToXls.py",
+    "move_filename.py": GITHUB_RAW_BASE_URL + "move_filename.py", # NEW: Add the new script URL
 }
 
 # KEPT FROM BYNDER as requested
@@ -121,11 +124,11 @@ def _on_process_complete_with_progress_ui(success, full_output, progress_bar, pr
     if success:
         log_output_widget.insert(tk.END, "\nScript completed successfully.\n", 'success')
         if success_callback:
-            success_callback()
+            success_callback(full_output) # Pass full_output to the callback
     else:
         log_output_widget.insert(tk.END, "\nScript failed. Please check the log above for errors.\n", 'error')
         if error_callback:
-            error_callback()
+            error_callback(full_output) # Pass full_output to the callback
     log_output_widget.see(tk.END)
 
 # --- NEW: Run Script functions based on progress display needs ---
@@ -151,8 +154,8 @@ def _run_script_with_progress(script_full_path, args, log_output_widget, progres
             env = os.environ.copy()
             env['PYTHONIOENCODING'] = 'utf-8'
 
-            process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
-                                       bufsize=1, universal_newlines=True, env=env)
+            process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                         bufsize=1, universal_newlines=True, env=env)
 
             def read_stream(stream, buffer, is_stderr=False):
                 for line in stream:
@@ -215,6 +218,8 @@ def _run_script_no_progress(script_full_path, args, log_output_widget, success_c
         stdout_str = result.stdout
         stderr_str = result.stderr
         
+        full_output = stdout_str + stderr_str # Capture full output before appending
+        
         if stdout_str:
             _append_to_log(log_output_widget, "\n--- Script Output ---\n" + stdout_str)
         if stderr_str:
@@ -226,31 +231,31 @@ def _run_script_no_progress(script_full_path, args, log_output_widget, success_c
         # Callbacks and cursor reset directly on main thread since this is blocking
         log_output_widget.winfo_toplevel().config(cursor="")
         if success:
-            if success_callback: success_callback()
+            if success_callback: success_callback(full_output) # Pass full output
         else:
-            if error_callback: error_callback()
+            if error_callback: error_callback(full_output) # Pass full output
         
-        return success, stdout_str + stderr_str # Return success and combined output
+        return success, full_output # Return success and combined output
 
     except FileNotFoundError:
         error_msg = f"  Error: Python interpreter (or script) not found. Check paths and ensure Python is correctly installed and accessible.\n"
         _append_to_log(log_output_widget, error_msg, is_stderr=True)
         log_output_widget.winfo_toplevel().config(cursor="")
-        if error_callback: error_callback()
+        if error_callback: error_callback("") # Pass empty string if script failed to even start
         return False, error_msg
     except Exception as e:
         error_msg = f"  An unexpected error occurred during subprocess execution: {e}\n"
         _append_to_log(log_output_widget, error_msg, is_stderr=True)
         log_output_widget.winfo_toplevel().config(cursor="")
-        if error_callback: error_callback()
+        if error_callback: error_callback("") # Pass empty string if script failed to even start
         return False, error_msg
 
 # --- Main Dispatcher Function for running scripts (MODIFIED) ---
 # Renamed from run_script_or_open_file to run_script_wrapper for clarity in context
-def run_script_wrapper(script_full_path, is_python_script, args=None, log_output_widget=None, 
-                             progress_bar=None, progress_label=None, run_button_wrapper=None, 
-                             progress_wrapper=None, success_callback=None, error_callback=None, 
-                             initial_progress_text="Starting..."):
+def run_script_wrapper(script_full_path, is_python_script, args=None, log_output_widget=None,
+                       progress_bar=None, progress_label=None, run_button_wrapper=None,
+                       progress_wrapper=None, success_callback=None, error_callback=None,
+                       initial_progress_text="Starting..."):
     
     print("DEBUG (UI): Entered run_script_wrapper function.", file=sys.stderr)
 
@@ -258,7 +263,7 @@ def run_script_wrapper(script_full_path, is_python_script, args=None, log_output
         error_msg = f"Error: File not found at {script_full_path}\n"
         _append_to_log(log_output_widget, error_msg, is_stderr=True)
         log_output_widget.winfo_toplevel().config(cursor="") # Reset cursor on immediate error
-        if error_callback: error_callback()
+        if error_callback: error_callback("") # Pass empty string to callback for immediate file not found
         return False, error_msg
 
     if is_python_script:
@@ -266,13 +271,13 @@ def run_script_wrapper(script_full_path, is_python_script, args=None, log_output
         if progress_bar is not None and progress_label is not None and \
            run_button_wrapper is not None and progress_wrapper is not None:
             # All progress-related widgets are provided, use the async version
-            return _run_script_with_progress(script_full_path, args, log_output_widget, 
-                                             progress_bar, progress_label, run_button_wrapper, 
+            return _run_script_with_progress(script_full_path, args, log_output_widget,
+                                             progress_bar, progress_label, run_button_wrapper,
                                              progress_wrapper, success_callback, error_callback,
                                              initial_progress_text)
         else:
             # No progress widgets (or not all of them), use the blocking version
-            return _run_script_no_progress(script_full_path, args, log_output_widget, 
+            return _run_script_no_progress(script_full_path, args, log_output_widget,
                                              success_callback, error_callback)
     else: # For non-Python files (e.g., opening a .xlsx template)
         _append_to_log(log_output_widget, f"Opening file: {script_full_path}\n")
@@ -311,7 +316,7 @@ class Tooltip:
         self.tooltip_window.wm_geometry(f"+{self.x}+{self.y}")
 
         label = ttk.Label(self.tooltip_window, text=self.text, background=self.bg_color, relief=tk.SOLID, borderwidth=1,
-                                 font=("Arial", 11), foreground=self.text_color, wraplength=400)
+                                     font=("Arial", 11), foreground=self.text_color, wraplength=400)
         label.pack(padx=5, pady=5)
 
     def hide_tooltip(self, event=None):
@@ -352,10 +357,16 @@ class RenamerApp:
         self.check_psa_sku_spreadsheet_path = tk.StringVar(value="")
         self.download_psa_sku_spreadsheet_path = tk.StringVar(value="")
         self.get_measurements_sku_spreadsheet_path = tk.StringVar(value="")
+        self.bynder_metadata_csv_path = tk.StringVar(value="") # For Bynder Metadata Convert
+        self.move_files_source_folder = tk.StringVar(value="") # NEW: For move_filename.py source folder
+        self.move_files_destination_folder = tk.StringVar(value="") # NEW: For move_filename.py destination folder
+        self.move_files_excel_path = tk.StringVar(value="") # NEW: For move_filename.py excel path
+
 
         self.check_psa_input_type = tk.StringVar(value="spreadsheet")
         self.download_psa_input_type = tk.StringVar(value="spreadsheet")
         self.get_measurements_input_type = tk.StringVar(value="spreadsheet")
+        self.move_files_input_type = tk.StringVar(value="spreadsheet") # NEW: For move_filename.py input method
 
         self.source_type = tk.StringVar(value="inline")  
         self.master_matrix_path = tk.StringVar(value="")
@@ -519,106 +530,106 @@ class RenamerApp:
         self.style.theme_use("clam")  
 
         self.style.configure('.',
-                                 font=self.base_font,
-                                 background=self.primary_bg,
-                                 foreground=self.text_color)
+                             font=self.base_font,
+                             background=self.primary_bg,
+                             foreground=self.text_color)
         
         self.style.configure('TFrame',
-                                 background=self.primary_bg)
+                             background=self.primary_bg)
         
         self.style.configure('SectionFrame.TFrame',
-                                 background=self.secondary_bg,
-                                 borderwidth=1,
-                                 relief="solid",  
-                                 padding=0)  
+                             background=self.secondary_bg,
+                             borderwidth=1,
+                             relief="solid",  
+                             padding=0)  
 
         self.style.configure('TLabel',
-                                 background=self.primary_bg,
-                                 foreground=self.text_color)
+                             background=self.primary_bg,
+                             foreground=self.text_color)
         
         self.style.configure('Header.TLabel',
-                                 font=self.header_font,
-                                 foreground=self.header_text_color,
-                                 background=self.secondary_bg)  
+                             font=self.header_font,
+                             foreground=self.header_text_color,
+                             background=self.secondary_bg)  
 
         self.style.configure('TButton',
-                                 background=self.accent_color,
-                                 foreground=self.RF_WHITE_BASE,  
-                                 font=self.base_font,
-                                 relief='flat',
-                                 padding=5)
+                             background=self.accent_color,
+                             foreground=self.RF_WHITE_BASE,  
+                             font=self.base_font,
+                             relief='flat',
+                             padding=5)
         self.style.map('TButton',
-                                 background=[('active', self._shade_color(self.accent_color, -0.1))],  
-                                 foreground=[('active', self.RF_WHITE_BASE)])  
+                       background=[('active', self._shade_color(self.accent_color, -0.1))],  
+                       foreground=[('active', self.RF_WHITE_BASE)])  
 
         self.style.configure('TEntry',
-                                 fieldbackground=self.secondary_bg,
-                                 foreground=self.text_color,
-                                 borderwidth=1,
-                                 relief="solid")
+                             fieldbackground=self.secondary_bg,
+                             foreground=self.text_color,
+                             borderwidth=1,
+                             relief="solid")
         
         self.style.configure('TScrollbar',
-                                 troughcolor=self.trough_color,
-                                 background=self.slider_color,
-                                 bordercolor=self.trough_color,
-                                 arrowcolor=self.text_color)
+                             troughcolor=self.trough_color,
+                             background=self.slider_color,
+                             bordercolor=self.trough_color,
+                             arrowcolor=self.text_color)
         self.style.map('TScrollbar',
-                                 background=[('active', self._shade_color(self.slider_color, -0.1))])
+                       background=[('active', self._shade_color(self.slider_color, -0.1))])
 
         self.style.configure('TNotebook',
-                                 background=self.primary_bg,
-                                 borderwidth=0)
+                             background=self.primary_bg,
+                             borderwidth=0)
         self.style.configure('TNotebook.Tab',
-                                 background=self._shade_color(self.primary_bg, -0.05),  
-                                 foreground=self.text_color,
-                                 font=self.base_font,
-                                 padding=[5, 2])
+                             background=self._shade_color(self.primary_bg, -0.05),  
+                             foreground=self.text_color,
+                             font=self.base_font,
+                             padding=[5, 2])
         self.style.map('TNotebook.Tab',
-                                 background=[('selected', self.accent_color)],
-                                 foreground=[('selected', self.RF_WHITE_BASE)],  
-                                 expand=[('selected', [1, 1, 1, 0])])  
+                       background=[('selected', self.accent_color)],
+                       foreground=[('selected', self.RF_WHITE_BASE)],  
+                       expand=[('selected', [1, 1, 1, 0])])  
 
         self.style.configure('TRadiobutton',
-                                 background=self.primary_bg,
-                                 foreground=self.text_color,
-                                 font=self.base_font,
-                                 indicatorcolor=self.accent_color)
+                             background=self.primary_bg,
+                             foreground=self.text_color,
+                             font=self.base_font,
+                             indicatorcolor=self.accent_color)
         self.style.map('TRadiobutton',
-                                 background=[('active', self.radiobutton_hover_bg)],  # Hover background
-                                 foreground=[('active', self.text_color)],
-                                 indicatorcolor=[('selected', self.accent_color), ('!selected', self.checkbox_indicator_off)]) # Corrected indicator color for selected/unselected
+                       background=[('active', self.radiobutton_hover_bg)],  # Hover background
+                       foreground=[('active', self.text_color)],
+                       indicatorcolor=[('selected', self.accent_color), ('!selected', self.checkbox_indicator_off)]) # Corrected indicator color for selected/unselected
         
         self.style.configure('TCheckbutton',
-                                 background=self.primary_bg,
-                                 foreground=self.text_color,
-                                 font=self.base_font,
-                                 indicatorcolor=self.checkbox_indicator_off) # Default indicator color when off
+                             background=self.primary_bg,
+                             foreground=self.text_color,
+                             font=self.base_font,
+                             indicatorcolor=self.checkbox_indicator_off) # Default indicator color when off
         self.style.map('TCheckbutton',
-                                 background=[('active', self.checkbox_hover_bg)], # Hover background
-                                 foreground=[('active', self.text_color)],
-                                 indicatorcolor=[('selected', self.checkbox_indicator_on), ('!selected', self.checkbox_indicator_off)])
+                       background=[('active', self.checkbox_hover_bg)], # Hover background
+                       foreground=[('active', self.text_color)],
+                       indicatorcolor=[('selected', self.checkbox_indicator_on), ('!selected', self.checkbox_indicator_off)])
 
         self.style.configure('TSeparator', background=self.border_color, relief='solid', sashrelief='solid', sashwidth=3) # Made separator thick
         self.style.layout('TSeparator',
-                                 [('TSeparator.separator', {'sticky': 'nswe'})])
+                          [('TSeparator.separator', {'sticky': 'nswe'})])
 
         self.style.configure('TCombobox',
-                                 fieldbackground=self.secondary_bg,  
-                                 background=self.primary_bg,  
-                                 foreground=self.text_color,
-                                 arrowcolor=self.text_color)
+                             fieldbackground=self.secondary_bg,  
+                             background=self.primary_bg,  
+                             foreground=self.text_color,
+                             arrowcolor=self.text_color)
         self.style.map('TCombobox',
-                                 fieldbackground=[('readonly', self.secondary_bg)],
-                                 background=[('readonly', self.primary_bg)],
-                                 foreground=[('readonly', self.text_color)],
-                                 selectbackground=[('readonly', self._shade_color(self.secondary_bg, -0.05))],  
-                                 selectforeground=[('readonly', self.text_color)])  
+                       fieldbackground=[('readonly', self.secondary_bg)],
+                       background=[('readonly', self.primary_bg)],
+                       foreground=[('readonly', self.text_color)],
+                       selectbackground=[('readonly', self._shade_color(self.secondary_bg, -0.05))],  
+                       selectforeground=[('readonly', self.text_color)])  
 
         if hasattr(self, 'log_text'):
             self.log_text.config(bg=self.log_bg, fg=self.log_text_color,
-                                         insertbackground=self.log_text_color,
-                                         selectbackground=self.accent_color,
-                                         selectforeground=self.RF_WHITE_BASE)
+                                     insertbackground=self.log_text_color,
+                                     selectbackground=self.accent_color,
+                                     selectforeground=self.RF_WHITE_BASE)
             self.log_text.tag_config('error', foreground='#FF6B6B')
             self.log_text.tag_config('success', foreground='#6BFF6B')
         
@@ -659,9 +670,9 @@ class RenamerApp:
                 widget.config(bg=self.primary_bg)
             elif isinstance(widget, scrolledtext.ScrolledText):
                 widget.config(bg=self.log_bg, fg=self.log_text_color,
-                                         insertbackground=self.log_text_color,
-                                         selectbackground=self.accent_color,
-                                         selectforeground=self.RF_WHITE_BASE)
+                                     insertbackground=self.log_text_color,
+                                     selectbackground=self.accent_color,
+                                     selectforeground=self.RF_WHITE_BASE)
 
         except tk.TclError:
             pass  
@@ -702,6 +713,8 @@ class RenamerApp:
     def _browse_file(self, string_var, file_type):
         if file_type == "xlsx":
             file_types = [("Excel files", "*.xlsx"), ("All files", "*.*")]
+        elif file_type == "csv": # NEW: For CSV files
+            file_types = [("CSV files", "*.csv"), ("All files", "*.*")]
         else:
             file_types = [("All files", "*.*")]
 
@@ -899,7 +912,7 @@ class RenamerApp:
                 # Replace the old script with the new one
                 # On Windows, direct overwrite of running script is hard.
                 # Copying and then restarting Python makes the new script load.
-                shutil.copy(temp_download_path, local_gui_path) 
+                shutil.copy(temp_download_path, local_gui_path)  
                 os.remove(temp_download_path) # Clean up temp file
 
                 # Update GUI last update timestamp
@@ -916,7 +929,7 @@ class RenamerApp:
                 
                 # Restart the application - this replaces the current process
                 python = sys.executable
-                os.execl(python, python, *sys.argv) 
+                os.execl(python, python, *sys.argv)  
         
         except requests.exceptions.RequestException as e:
             self.log_print(f"Error checking/downloading GUI update: {e}\n", is_stderr=True)
@@ -1028,12 +1041,12 @@ class RenamerApp:
             
         # Call the new run_script_wrapper for Renaminator (no progress bar needed)
         success, _ = run_script_wrapper(renaminator_script_path, True, args, self.log_text,
-                                         progress_bar=None, progress_label=None, 
+                                         progress_bar=None, progress_label=None,
                                          run_button_wrapper=None, progress_wrapper=None,
-                                         success_callback=lambda: self._process_renamer_result(True, force_continue),
-                                         error_callback=lambda: self._process_renamer_result(False, force_continue))
+                                         success_callback=lambda output: self._process_renamer_result(True, force_continue, output), # Pass output
+                                         error_callback=lambda output: self._process_renamer_result(False, force_continue, output)) # Pass output
 
-    def _process_renamer_result(self, success, was_forced_attempt):
+    def _process_renamer_result(self, success, was_forced_attempt, output): # Now accepts output
         if success:
             messagebox.showinfo("Success", "Master Renamer script completed successfully!")
         else:
@@ -1082,10 +1095,10 @@ class RenamerApp:
         args = ['--matrix', matrix_path, '--input', network_folder, '--output', output_folder]
         
         # Define callbacks for inline copy
-        def inline_copy_success_callback():
+        def inline_copy_success_callback(output): # Now accepts output
             self.run_inline_copy_button.config(state='normal')
             messagebox.showinfo("Success", "Inline Project Copy completed successfully!")
-        def inline_copy_error_callback():
+        def inline_copy_error_callback(output): # Now accepts output
             self.run_inline_copy_button.config(state='normal')
             messagebox.showerror("Error", "Inline Project Copy failed. Please check the log for details.")
 
@@ -1118,10 +1131,10 @@ class RenamerApp:
         args = ['--matrix', matrix_path, '--output', output_folder]
         
         # Define callbacks for PSO1 download
-        def pso1_download_success_callback():
+        def pso1_download_success_callback(output): # Now accepts output
             self.run_pso1_download_button.config(state='normal')
             messagebox.showinfo("Success", "Download (PSO Option 1) completed successfully!")
-        def pso1_download_error_callback():
+        def pso1_download_error_callback(output): # Now accepts output
             self.run_pso1_download_button.config(state='normal')
             messagebox.showerror("Error", "Download (PSO Option 1) failed. Please check the log for details.")
 
@@ -1157,10 +1170,10 @@ class RenamerApp:
         args = ['--matrix', matrix_path, '--input', network_folder, '--output', output_folder]
         
         # Define callbacks for PSO2 copy
-        def pso2_copy_success_callback():
+        def pso2_copy_success_callback(output): # Now accepts output
             self.run_pso2_copy_button.config(state='normal')
             messagebox.showinfo("Success", "Copy (PSO Option 2) completed successfully!")
-        def pso2_copy_error_callback():
+        def pso2_copy_error_callback(output): # Now accepts output
             self.run_pso2_copy_button.config(state='normal')
             messagebox.showerror("Error", "Copy (PSO Option 2) failed. Please check the log for details.")
 
@@ -1189,13 +1202,13 @@ class RenamerApp:
             return
         
         # Success and error callbacks for the cropping scripts
-        def cropping_success_callback():
+        def cropping_success_callback(output): # Now accepts output
             # Re-enable all cropping buttons
             self.cropping_run_button_wrapper.grid(row=0, column=1) # Re-show buttons
             self.cropping_progress_wrapper.grid_remove() # Hide progress bar
             messagebox.showinfo("Success", f"Cropping with {script_filename} completed successfully!")
 
-        def cropping_error_callback():
+        def cropping_error_callback(output): # Now accepts output
             # Re-enable all cropping buttons
             self.cropping_run_button_wrapper.grid(row=0, column=1) # Re-show buttons
             self.cropping_progress_wrapper.grid_remove() # Hide progress bar
@@ -1231,7 +1244,7 @@ class RenamerApp:
 
         if not os.path.exists(bynder_script_path):
             messagebox.showerror("Error", f"Bynder Metadata Prep script not found: {bynder_script_path}\n"
-                                         f"Please ensure '{bynder_script_name}' is in your scripts folder.")
+                                          f"Please ensure '{bynder_script_name}' is in your scripts folder.")
             return
 
         self.log_print(f"\n--- Running Bynder Metadata Prep Script ({bynder_script_name}) ---")
@@ -1241,11 +1254,11 @@ class RenamerApp:
             '--input', assets_folder
         ]
         
-        def bynder_prep_success_callback():
+        def bynder_prep_success_callback(output): # Now accepts output
             self.run_bynder_prep_button.config(state='normal') # Re-enable button
             messagebox.showinfo("Success", "Bynder Metadata Prep script completed successfully!\n"
-                                         "The metadata importer CSV should be in your downloads folder.")
-        def bynder_prep_error_callback():
+                                          "The metadata importer CSV should be in your downloads folder.")
+        def bynder_prep_error_callback(output): # Now accepts output
             self.run_bynder_prep_button.config(state='normal') # Re-enable button
             messagebox.showerror("Error", "Bynder Metadata Prep script failed. Please check the log for details.")
 
@@ -1253,8 +1266,8 @@ class RenamerApp:
 
         # Call run_script_wrapper with progress bar arguments for Bynder Metadata Prep
         success, _ = run_script_wrapper(bynder_script_path, True, args, self.log_text,
-                                         self.bynder_prep_progress_bar, self.bynder_prep_progress_label, 
-                                         self.bynder_prep_run_button_wrapper, self.bynder_prep_progress_wrapper, 
+                                         self.bynder_prep_progress_bar, self.bynder_prep_progress_label,  
+                                         self.bynder_prep_run_button_wrapper, self.bynder_prep_progress_wrapper,  
                                          bynder_prep_success_callback, bynder_prep_error_callback,
                                          initial_progress_text="Preparing Metadata...")
 
@@ -1303,7 +1316,7 @@ class RenamerApp:
 
         if not os.path.exists(check_psas_script_path):
             messagebox.showerror("Error", f"Check Bynder PSAs script not found: {check_psas_script_path}\n"
-                                         f"Please ensure '{check_psas_script_name}' is in your scripts folder.")
+                                          f"Please ensure '{check_psas_script_name}' is in your scripts folder.")
             return
         
         sku_input_data, is_spreadsheet_path = self._get_skus_from_input(
@@ -1324,11 +1337,11 @@ class RenamerApp:
             self.log_print(f"Using SKU input from text box (count: {len(sku_input_data)})")
             args.extend(["--sku_list", ",".join(sku_input_data)])
             
-        def check_psas_success_callback():
+        def check_psas_success_callback(output): # Now accepts output
             self.run_check_psas_button.config(state='normal')
             messagebox.showinfo("Success", "Check Bynder PSAs script completed successfully!\n"
-                                         "Results should be in your downloads folder.")
-        def check_psas_error_callback():
+                                          "Results should be in your downloads folder.")
+        def check_psas_error_callback(output): # Now accepts output
             self.run_check_psas_button.config(state='normal')
             messagebox.showerror("Error", "Check Bynder PSAs script failed. Please check the log for details.")
 
@@ -1349,7 +1362,7 @@ class RenamerApp:
 
         if not os.path.exists(download_psas_script_path):
             messagebox.showerror("Error", f"Download PSAs script not found: {download_psas_script_path}\n"
-                                         f"Please ensure '{download_psas_script_name}' is in your scripts folder.")
+                                          f"Please ensure '{download_psas_script_name}' is in your scripts folder.")
             return
         
         sku_input_data, is_spreadsheet_path = self._get_skus_from_input(
@@ -1398,21 +1411,21 @@ class RenamerApp:
         if image_types_arg:
             args.extend(["--image_types", image_types_arg])
             
-        def download_success_callback():
+        def download_success_callback(output): # Now accepts output
             self.run_download_psas_button.config(state='normal') # Re-enable button
             messagebox.showinfo("Success", f"Download PSAs script completed successfully!\n"
-                                         f"Results are in the selected output folder: {output_folder_path}")
-        def download_error_callback():
+                                          f"Results are in the selected output folder: {output_folder_path}")
+        def download_error_callback(output): # Now accepts output
             self.run_download_psas_button.config(state='normal') # Re-enable button
             messagebox.showerror("Error", "Download PSAs script failed. Please check the log for details.")
 
         self.run_download_psas_button.config(state='disabled')
 
         # Call run_script_wrapper with progress bar arguments for Download PSAs
-        run_script_wrapper(download_psas_script_path, True, args, self.log_text, 
+        run_script_wrapper(download_psas_script_path, True, args, self.log_text,  
                                        self.download_psas_progress_bar, self.download_psas_progress_label,
-                                       self.download_psas_run_button_wrapper, 
-                                       self.download_psas_progress_wrapper, 
+                                       self.download_psas_run_button_wrapper,  
+                                       self.download_psas_progress_wrapper,  
                                        download_success_callback, download_error_callback,
                                        initial_progress_text="Downloading...")
 
@@ -1424,7 +1437,7 @@ class RenamerApp:
 
         if not os.path.exists(get_measurements_script_path):
             messagebox.showerror("Error", f"Get Measurements script not found: {get_measurements_script_path}\n"
-                                         f"Please ensure '{get_measurements_script_name}' is in your scripts folder.")
+                                          f"Please ensure '{get_measurements_script_name}' is in your scripts folder.")
             return
 
         sku_input_data, is_spreadsheet_path = self._get_skus_from_input(
@@ -1461,11 +1474,11 @@ class RenamerApp:
 
         args.extend(["--output_folder", output_folder_for_script])
             
-        def get_measurements_success_callback():
+        def get_measurements_success_callback(output): # Now accepts output
             self.run_get_measurements_button.config(state='normal')
             messagebox.showinfo("Success", f"Get Measurements script completed successfully!\n"
-                                         f"{output_location_message}")
-        def get_measurements_error_callback():
+                                          f"{output_location_message}")
+        def get_measurements_error_callback(output): # Now accepts output
             self.run_get_measurements_button.config(state='normal')
             messagebox.showerror("Error", "Get Measurements script failed. Please check the log for details.")
 
@@ -1474,11 +1487,133 @@ class RenamerApp:
         # Call run_script_wrapper with progress bar arguments for Get Measurements
         run_script_wrapper(get_measurements_script_path, True, args, self.log_text,
                                        self.get_measurements_progress_bar, self.get_measurements_progress_label,
-                                       self.get_measurements_run_button_wrapper, 
-                                       self.get_measurements_progress_wrapper, 
+                                       self.get_measurements_run_button_wrapper,  
+                                       self.get_measurements_progress_wrapper,  
                                        get_measurements_success_callback, get_measurements_error_callback,
                                        initial_progress_text="Getting Measurements...")
 
+    # NEW: Function to run the Bynder Metadata Conversion script
+    def _run_bynder_metadata_convert_script(self):
+        input_csv_path = self.bynder_metadata_csv_path.get()
+        scripts_folder = self.scripts_root_folder.get()
+        convert_script_name = SCRIPT_FILENAMES["Convert Bynder Metadata to XLS"]
+        convert_script_path = os.path.join(scripts_folder, convert_script_name)
+        
+        # Output to downloads folder
+        output_folder = os.path.join(os.path.expanduser("~"), "Downloads")
+        os.makedirs(output_folder, exist_ok=True)
+
+
+        if not os.path.exists(convert_script_path):
+            messagebox.showerror("Error", f"Bynder Metadata Conversion script not found: {convert_script_path}\n"
+                                          f"Please ensure '{convert_script_name}' is in your scripts folder.")
+            return
+        if not input_csv_path or not os.path.exists(input_csv_path) or not input_csv_path.lower().endswith('.csv'):
+            messagebox.showerror("Input Error", "Please select a valid Bynder Metadata CSV file (.csv).")
+            return
+
+        self.log_print(f"\n--- Running Bynder Metadata Conversion Script ({convert_script_name}) ---")
+        self.log_print(f"Input CSV: {input_csv_path}")
+        self.log_print(f"Output to: {output_folder}")
+
+        args = [input_csv_path, output_folder] # Pass arguments to the script
+
+        def convert_success_callback(output): # Now accepts output
+            self.run_bynder_metadata_convert_button.config(state='normal')
+            messagebox.showinfo("Success", f"Bynder Metadata CSV converted successfully!\n"
+                                          f"The converted Excel file is in your Downloads folder.")
+        def convert_error_callback(output): # Now accepts output
+            self.run_bynder_metadata_convert_button.config(state='normal')
+            messagebox.showerror("Error", "Bynder Metadata conversion failed. Please check the log for details.")
+
+        self.run_bynder_metadata_convert_button.config(state='disabled')
+
+        # Call run_script_wrapper with progress bar arguments for Bynder Metadata Conversion
+        run_script_wrapper(convert_script_path, True, args, self.log_text,
+                                       self.bynder_metadata_convert_progress_bar, self.bynder_metadata_convert_progress_label,
+                                       self.bynder_metadata_convert_run_button_wrapper,
+                                       self.bynder_metadata_convert_progress_wrapper,
+                                       convert_success_callback, convert_error_callback,
+                                       initial_progress_text="Converting CSV to XLS...")
+
+    # NEW: Function to run the Move Files script
+    def _run_move_files_script(self):
+        scripts_folder = self.scripts_root_folder.get()
+        move_script_name = SCRIPT_FILENAMES["Move Files from Spreadsheet"]
+        move_script_path = os.path.join(scripts_folder, move_script_name)
+
+        if not os.path.exists(move_script_path):
+            messagebox.showerror("Error", f"Move Files script not found: {move_script_path}\n"
+                                          f"Please ensure '{move_script_name}' is in your scripts folder.")
+            return
+
+        source_folder = self.move_files_source_folder.get()
+        destination_folder = self.move_files_destination_folder.get()
+
+        if not source_folder or not os.path.isdir(source_folder):
+            messagebox.showerror("Input Error", "Please select a valid Source Folder.")
+            return
+        if not destination_folder:
+            messagebox.showerror("Input Error", "Please select a Destination Folder.")
+            return
+
+        file_input_data, is_spreadsheet_path = self._get_skus_from_input(
+            self.move_files_input_type,
+            self.move_files_excel_path, # This variable will hold the path to the excel file
+            self.move_files_text_widget # This widget will hold the text input
+        )
+        if file_input_data is None:
+            return
+
+        self.log_print(f"\n--- Running Move Files Script ({move_script_name}) ---")
+        self.log_print(f"Source Folder: {source_folder}")
+        self.log_print(f"Destination Folder: {destination_folder}")
+
+        args = ["--source_folder", source_folder, "--destination_folder", destination_folder]
+        if is_spreadsheet_path:
+            self.log_print(f"File names from spreadsheet: {file_input_data}")
+            args.extend(["--excel_file", file_input_data])
+        else:
+            self.log_print(f"File names from text box (count: {len(file_input_data)})")
+            args.extend(["--filenames_list", ",".join(file_input_data)])
+
+        # Define specific callbacks for Move Files
+        def move_files_success_callback(output):
+            self.run_move_files_button.config(state='normal')
+            total_attempted = 0
+            moved_count = 0
+            # Parse the summary from the output
+            for line in output.splitlines():
+                if "Total files attempted:" in line:
+                    try:
+                        total_attempted = int(line.split(":")[1].strip())
+                    except ValueError:
+                        pass
+                if "Files successfully moved:" in line:
+                    try:
+                        moved_count = int(line.split(":")[1].strip())
+                    except ValueError:
+                        pass
+
+            if total_attempted > 0 and moved_count == 0:
+                messagebox.showwarning("No Files Moved", "The script completed, but 0 files were successfully moved. This might mean the files listed were not found in the source folder. Please check the Activity Log for details.")
+            elif total_attempted == 0:
+                messagebox.showinfo("No Files Specified", "The script completed, but no files were specified in the input Excel or textbox.")
+            else:
+                messagebox.showinfo("Success", f"Move Files script completed successfully! {moved_count} of {total_attempted} files moved.")
+        
+        def move_files_error_callback(output): # Now accepts output
+            self.run_move_files_button.config(state='normal')
+            messagebox.showerror("Error", "Move Files script failed. Please check the log for details.")
+
+        self.run_move_files_button.config(state='disabled')
+
+        run_script_wrapper(move_script_path, True, args, self.log_text,
+                                       self.move_files_progress_bar, self.move_files_progress_label,
+                                       self.move_files_run_button_wrapper,
+                                       self.move_files_progress_wrapper,
+                                       move_files_success_callback, move_files_error_callback,
+                                       initial_progress_text="Moving Files...")
 
     def _setup_initial_state(self):
         # This function is now called after loading config, so values will be set
@@ -1487,6 +1622,7 @@ class RenamerApp:
         self._show_input_method("check_psa", self.check_psa_input_type.get())
         self._show_input_method_download_psa(self.download_psa_input_type.get())
         self._show_input_method("get_measurements", self.get_measurements_input_type.get())
+        self._show_input_method_move_files(self.move_files_input_type.get()) # NEW: For move_filename.py
         # Ensure correct visibility of the log frame on startup
         if not self.log_expanded:  
             self.log_text.pack_forget()  
@@ -1537,7 +1673,7 @@ class RenamerApp:
 
         # Theme selector (moved to a new column 2)
         theme_frame = ttk.Frame(top_bar_frame, style='TFrame')
-        theme_frame.grid(row=0, column=2, sticky="e") 
+        theme_frame.grid(row=0, column=2, sticky="e")  
         
         self.theme_label = ttk.Label(theme_frame, text="Theme:", style='TLabel')
         self.theme_label.pack(side="left", padx=(0, 5))
@@ -1927,6 +2063,50 @@ class RenamerApp:
 
         row_counter += 1
 
+        # NEW SECTION: Bynder Metadata Convert to XLS
+        bynder_metadata_convert_wrapper_frame = ttk.Frame(self.scrollable_frame, style='SectionFrame.TFrame')
+        bynder_metadata_convert_wrapper_frame.grid(row=row_counter, column=0, columnspan=2, padx=10, pady=5, sticky="ew")
+        row_counter += 1
+
+        header_sub_frame_bynder_convert = ttk.Frame(bynder_metadata_convert_wrapper_frame, style='TFrame')
+        header_sub_frame_bynder_convert.pack(side="top", fill="x", pady=(0, 5), padx=0)
+        header_label_bynder_convert = ttk.Label(header_sub_frame_bynder_convert, text="Convert Bynder Metadata CSV to XLS", style='Header.TLabel')
+        header_label_bynder_convert.pack(side="left", padx=(0, 5))
+        info_label_bynder_convert = ttk.Label(header_sub_frame_bynder_convert, text=" ⓘ", font=self.base_font)  
+        Tooltip(info_label_bynder_convert, "Did you download a metadata csv from assets in Bynder? Use this tool to easily convert that csv to XLSX! It will be exported to your Downloads folder.", self.secondary_bg, self.text_color)  
+        info_label_bynder_convert.pack(side="left", anchor="center")
+
+        bynder_metadata_convert_frame = ttk.Frame(bynder_metadata_convert_wrapper_frame, style='TFrame')
+        bynder_metadata_convert_frame.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        bynder_metadata_convert_frame.grid_columnconfigure(1, weight=1)
+
+        ttk.Label(bynder_metadata_convert_frame, text="Bynder Metadata CSV File:", style='TLabel').grid(row=0, column=0, padx=5, pady=5, sticky="w")
+        ttk.Entry(bynder_metadata_convert_frame, textvariable=self.bynder_metadata_csv_path, width=45, style='TEntry').grid(row=0, column=1, padx=5, pady=5, sticky="ew")
+        ttk.Button(bynder_metadata_convert_frame, text="Browse", command=lambda: self._browse_file(self.bynder_metadata_csv_path, "csv"), style='TButton').grid(row=0, column=2, padx=5, pady=5)
+        
+        # --- Button and progress bar layout for Bynder Metadata Convert ---
+        self.bynder_metadata_convert_run_control_frame = ttk.Frame(bynder_metadata_convert_frame, style='TFrame')
+        self.bynder_metadata_convert_run_control_frame.grid(row=1, column=0, columnspan=3, pady=10, sticky="ew")
+        self.bynder_metadata_convert_run_control_frame.grid_columnconfigure(0, weight=1) # Left spacer
+        self.bynder_metadata_convert_run_control_frame.grid_columnconfigure(1, weight=0) # Content column
+        self.bynder_metadata_convert_run_control_frame.grid_columnconfigure(2, weight=1) # Right spacer
+
+        self.bynder_metadata_convert_run_button_wrapper = ttk.Frame(self.bynder_metadata_convert_run_control_frame, style='TFrame')
+        self.bynder_metadata_convert_run_button_wrapper.grid(row=0, column=1, sticky="")
+        self.run_bynder_metadata_convert_button = ttk.Button(self.bynder_metadata_convert_run_button_wrapper, text="Convert CSV to XLS", command=self._run_bynder_metadata_convert_script, style='TButton')
+        self.run_bynder_metadata_convert_button.pack(padx=5, pady=0)
+
+        self.bynder_metadata_convert_progress_wrapper = ttk.Frame(self.bynder_metadata_convert_run_control_frame, style='TFrame')
+        self.bynder_metadata_convert_progress_wrapper.grid(row=0, column=1, sticky="ew")
+        self.bynder_metadata_convert_progress_bar = ttk.Progressbar(self.bynder_metadata_convert_progress_wrapper, orient="horizontal", length=200, mode="determinate")
+        self.bynder_metadata_convert_progress_bar.pack(side="left", fill="x", expand=True, padx=5)
+        self.bynder_metadata_convert_progress_label = ttk.Label(self.bynder_metadata_convert_progress_wrapper, text="", style='TLabel')
+        self.bynder_metadata_convert_progress_label.pack(side="right", padx=5)
+        self.bynder_metadata_convert_progress_wrapper.grid_remove() # Initially hide
+        # --- End Bynder Metadata Convert Progress Bar ---
+
+        row_counter += 1
+
         check_psas_wrapper_frame = ttk.Frame(self.scrollable_frame, style='SectionFrame.TFrame')
         check_psas_wrapper_frame.grid(row=row_counter, column=0, columnspan=2, padx=10, pady=5, sticky="ew")
         row_counter += 1
@@ -1960,8 +2140,8 @@ class RenamerApp:
         self.check_psa_textbox_frame = ttk.Frame(check_psas_frame, style='TFrame')
         ttk.Label(self.check_psa_textbox_frame, text="Paste SKUs (one per line):", style='TLabel').pack(padx=5, pady=5, anchor="w")
         self.check_psa_text_widget = scrolledtext.ScrolledText(self.check_psa_textbox_frame, width=60, height=8, font=self.base_font,
-                                                                   bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
-                                                                   insertbackground=self.text_color, relief="solid", borderwidth=1)
+                                                               bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
+                                                               insertbackground=self.text_color, relief="solid", borderwidth=1)
         self.check_psa_text_widget.pack(padx=5, pady=(0, 5), fill="both", expand=True)
 
         # --- Check Bynder PSAs: button and progress bar layout ---
@@ -2020,8 +2200,8 @@ class RenamerApp:
         self.download_psa_textbox_frame = ttk.Frame(download_psas_frame, style='TFrame')
         ttk.Label(self.download_psa_textbox_frame, text="Paste SKUs (one per line):", style='TLabel').pack(padx=5, pady=5, anchor="w")
         self.download_psa_text_widget = scrolledtext.ScrolledText(self.download_psa_textbox_frame, width=60, height=8, font=self.base_font,
-                                                                   bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
-                                                                   insertbackground=self.text_color, relief="solid", borderwidth=1)
+                                                                 bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
+                                                                 insertbackground=self.text_color, relief="solid", borderwidth=1)
         self.download_psa_text_widget.pack(padx=5, pady=(0, 5), fill="both", expand=True)
 
         self.download_psa_spreadsheet_frame.grid(row=1, column=0, columnspan=3, sticky="ew")
@@ -2112,8 +2292,8 @@ class RenamerApp:
         self.get_measurements_textbox_frame.grid(row=1, column=0, columnspan=3, sticky="nsew")
         ttk.Label(self.get_measurements_textbox_frame, text="Paste SKUs (one per line):", style='TLabel').pack(padx=5, pady=5, anchor="w")
         self.get_measurements_text_widget = scrolledtext.ScrolledText(self.get_measurements_textbox_frame, width=60, height=8, font=self.base_font,
-                                                                    bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
-                                                                    insertbackground=self.text_color, relief="solid", borderwidth=1)
+                                                                 bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
+                                                                 insertbackground=self.text_color, relief="solid", borderwidth=1)
         self.get_measurements_text_widget.pack(padx=5, pady=(0, 5), fill="both", expand=True)
 
         # --- MODIFIED Section: Get Measurements button and progress bar layout ---
@@ -2144,6 +2324,87 @@ class RenamerApp:
         self.get_measurements_progress_wrapper.grid_remove() # Initially hide the progress wrapper
         # --- END MODIFIED Section for Get Measurements ---
 
+
+        row_counter += 1
+
+        # NEW SECTION: Move Files from Spreadsheet/List
+        move_files_wrapper_frame = ttk.Frame(self.scrollable_frame, style='SectionFrame.TFrame')
+        move_files_wrapper_frame.grid(row=row_counter, column=0, columnspan=2, padx=10, pady=5, sticky="ew")
+        row_counter += 1
+
+        header_sub_frame_move_files = ttk.Frame(move_files_wrapper_frame, style='TFrame')
+        header_sub_frame_move_files.pack(side="top", fill="x", pady=(0, 5), padx=0)
+        header_label_move_files = ttk.Label(header_sub_frame_move_files, text="Move Files from Spreadsheet/List", style='Header.TLabel')
+        header_label_move_files.pack(side="left", padx=(0, 5))
+        info_label_move_files = ttk.Label(header_sub_frame_move_files, text=" ⓘ", font=self.base_font)
+        Tooltip(info_label_move_files, "Moves files from a source folder to a destination folder based on a list of filenames provided in an Excel spreadsheet (first column) or a text box.", self.secondary_bg, self.text_color)
+        info_label_move_files.pack(side="left", anchor="center")
+
+        move_files_frame = ttk.Frame(move_files_wrapper_frame, style='TFrame')
+        move_files_frame.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        move_files_frame.grid_columnconfigure(1, weight=1)
+
+        ttk.Label(move_files_frame, text="Source Folder:", style='TLabel').grid(row=0, column=0, padx=5, pady=5, sticky="w")
+        ttk.Entry(move_files_frame, textvariable=self.move_files_source_folder, width=45, style='TEntry').grid(row=0, column=1, padx=5, pady=5, sticky="ew")
+        ttk.Button(move_files_frame, text="Browse", command=lambda: self._browse_folder(self.move_files_source_folder), style='TButton').grid(row=0, column=2, padx=5, pady=5)
+
+        ttk.Label(move_files_frame, text="Destination Folder:", style='TLabel').grid(row=1, column=0, padx=5, pady=5, sticky="w")
+        ttk.Entry(move_files_frame, textvariable=self.move_files_destination_folder, width=45, style='TEntry').grid(row=1, column=1, padx=5, pady=5, sticky="ew")
+        ttk.Button(move_files_frame, text="Browse", command=lambda: self._browse_folder(self.move_files_destination_folder), style='TButton').grid(row=1, column=2, padx=5, pady=5)
+
+        # Input Method Selection
+        input_method_frame_move_files = ttk.Frame(move_files_frame, style='TFrame')
+        input_method_frame_move_files.grid(row=2, column=0, columnspan=3, sticky="w", padx=5, pady=(0,5))
+        ttk.Label(input_method_frame_move_files, text="Input Method:", style='TLabel').pack(side="left", padx=(0,5))
+        ttk.Radiobutton(input_method_frame_move_files, text="From Spreadsheet", variable=self.move_files_input_type, value="spreadsheet", command=lambda: self._show_input_method_move_files("spreadsheet"), style='TRadiobutton').pack(side="left", padx=5)
+        ttk.Radiobutton(input_method_frame_move_files, text="From Text Box", variable=self.move_files_input_type, value="textbox", command=lambda: self._show_input_method_move_files("textbox"), style='TRadiobutton').pack(side="left", padx=5)
+
+        # Spreadsheet Input Frame
+        self.move_files_spreadsheet_frame = ttk.Frame(move_files_frame, style='TFrame')
+        self.move_files_spreadsheet_frame.grid(row=3, column=0, columnspan=3, sticky="ew")
+        ttk.Label(self.move_files_spreadsheet_frame, text="Filenames Spreadsheet (.xlsx):", style='TLabel').grid(row=0, column=0, padx=5, pady=5, sticky="w")
+        self.move_files_excel_path = tk.StringVar() # This variable will hold the path to the excel file
+        ttk.Entry(self.move_files_spreadsheet_frame, textvariable=self.move_files_excel_path, width=45, style='TEntry').grid(row=0, column=1, padx=5, pady=5, sticky="ew")
+        ttk.Button(self.move_files_spreadsheet_frame, text="Browse", command=lambda: self._browse_file(self.move_files_excel_path, "xlsx"), style='TButton').grid(row=0, column=2, padx=5, pady=5)
+        self.move_files_spreadsheet_frame.grid_columnconfigure(1, weight=1)
+
+        # Textbox Input Frame
+        self.move_files_textbox_frame = ttk.Frame(move_files_frame, style='TFrame')
+        self.move_files_textbox_frame.grid(row=3, column=0, columnspan=3, sticky="nsew")
+        ttk.Label(self.move_files_textbox_frame, text="Paste Filenames (one per line):", style='TLabel').pack(padx=5, pady=5, anchor="w")
+        self.move_files_text_widget = scrolledtext.ScrolledText(self.move_files_textbox_frame, width=60, height=8, font=self.base_font,
+                                                                bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
+                                                                insertbackground=self.text_color, relief="solid", borderwidth=1)
+        self.move_files_text_widget.pack(padx=5, pady=(0, 5), fill="both", expand=True)
+
+        # Initially show the spreadsheet frame and hide the textbox frame
+        # This will be overridden by _setup_initial_state based on loaded config
+        self.move_files_spreadsheet_frame.grid(row=3, column=0, columnspan=3, sticky="ew")
+        self.move_files_textbox_frame.grid_remove()
+
+        # --- Move Files: Button and progress bar layout ---
+        self.move_files_run_control_frame = ttk.Frame(move_files_frame, style='TFrame')
+        self.move_files_run_control_frame.grid(row=4, column=0, columnspan=3, pady=10, sticky="ew")
+
+        self.move_files_run_control_frame.grid_columnconfigure(0, weight=1) # Left spacer
+        self.move_files_run_control_frame.grid_columnconfigure(1, weight=0) # Content column
+        self.move_files_run_control_frame.grid_columnconfigure(2, weight=1) # Right spacer
+
+        self.move_files_run_button_wrapper = ttk.Frame(self.move_files_run_control_frame, style='TFrame')
+        self.move_files_run_button_wrapper.grid(row=0, column=1, sticky="")
+        self.run_move_files_button = ttk.Button(self.move_files_run_button_wrapper, text="Run Move Files", command=self._run_move_files_script, style='TButton')
+        self.run_move_files_button.pack(padx=5, pady=0)
+
+        self.move_files_progress_wrapper = ttk.Frame(self.move_files_run_control_frame, style='TFrame')
+        self.move_files_progress_wrapper.grid(row=0, column=1, sticky="ew")
+        self.move_files_progress_bar = ttk.Progressbar(self.move_files_progress_wrapper, orient="horizontal", length=200, mode="determinate")
+        self.move_files_progress_bar.pack(side="left", fill="x", expand=True, padx=5)
+        self.move_files_progress_label = ttk.Label(self.move_files_progress_wrapper, text="", style='TLabel')
+        self.move_files_progress_label.pack(side="right", padx=5)
+        self.move_files_progress_wrapper.grid_remove() # Initially hide
+        # --- End Move Files Progress Bar ---
+
+        row_counter += 1
 
         self.log_wrapper_frame = ttk.Frame(self.master, style='SectionFrame.TFrame')
         self.log_wrapper_frame.grid(row=2, column=0, padx=10, pady=5, sticky="nsew")  
@@ -2183,6 +2444,19 @@ class RenamerApp:
             self.download_psa_spreadsheet_frame.grid_remove()
         self.master.update_idletasks()
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+
+    # NEW: Function to toggle input method for Move Files
+    def _show_input_method_move_files(self, method):
+        """Shows either the spreadsheet input or textbox input for the Move Files tool."""
+        if method == "spreadsheet":
+            self.move_files_spreadsheet_frame.grid(row=3, column=0, columnspan=3, sticky="ew")
+            self.move_files_textbox_frame.grid_remove()
+        else: # textbox
+            self.move_files_textbox_frame.grid(row=3, column=0, columnspan=3, sticky="nsew")
+            self.move_files_spreadsheet_frame.grid_remove()
+        self.master.update_idletasks()
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+
 
 # --- Main execution ---
 if __name__ == "__main__":

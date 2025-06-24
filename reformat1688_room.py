@@ -6,6 +6,19 @@ from tkinter import filedialog
 from PIL import Image, UnidentifiedImageError
 import shutil
 import concurrent.futures
+import threading # Import threading for the lock
+
+# Global variables for progress tracking
+total_files_to_process = 0
+total_processed_files = 0
+progress_lock = threading.Lock()
+
+def print_progress(current_count, total_count):
+    """Prints the current progress percentage to stdout."""
+    if total_count > 0:
+        percent = (current_count / total_count) * 100
+        print(f"PROGRESS: {percent:.1f}")
+        sys.stdout.flush() # Ensure immediate output
 
 def prompt_for_folder_tk(prompt_message):
     """
@@ -133,8 +146,13 @@ def main():
 
     if not image_paths:
         print("No supported image files found in the specified folder. Exiting.")
+        print("PROGRESS: 0.0") # Report 0% progress if no files to process
         sys.exit(0)
 
+    global total_files_to_process, total_processed_files
+    total_files_to_process = len(image_paths)
+    total_processed_files = 0
+    
     # Use ThreadPoolExecutor for parallel processing, similar to the second script
     with concurrent.futures.ThreadPoolExecutor() as executor:
         futures = [
@@ -145,10 +163,15 @@ def main():
             result = future.result()
             if result:
                 print(result) # Print results from the threaded tasks
+            
+            with progress_lock:
+                total_processed_files += 1
+                print_progress(total_processed_files, total_files_to_process)
 
     print(f"\n--- Processing Complete ---")
+    print(f"Total images found: {total_files_to_process}")
     print(f"All done! Check '{output_dir}' for processed images and '{problematic_dir}' for any issues.")
-    sys.exit(0)
+    sys.exit(0) # Always exit with 0 if the script itself ran without crashing
 
 if __name__ == "__main__":
     main()

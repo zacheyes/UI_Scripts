@@ -24,9 +24,10 @@ def process_image(file_path, output_dir, canvas_size=(3000, 1688), margin=0):
     4. Scales the cropped content to match the canvas height (width may overflow).
     5. Pastes the resized content onto a white background canvas, centered.
     6. Saves the result to the output directory.
+    Returns True for success, False for skip/error.
     """
     try:
-        # Open image with alpha so we can detect transparency
+        # Open image with alpha so we can detect transparency too
         im = Image.open(file_path).convert("RGBA")
         width, height = im.size
         pixels = im.load()
@@ -118,33 +119,37 @@ def main():
     print(f"Output will be saved to: {output_dir}\n")
 
     processed_count = 0
-    skipped_count = 0
-    error_count = 0
+    error_or_skipped_count = 0 # Renamed for clarity, as process_image returns False for both
 
     image_files = [f for f in sorted(os.listdir(input_folder)) if f.lower().endswith(exts)]
 
     if not image_files:
         print("No supported image files found in the specified folder. Exiting.")
+        print("PROGRESS: 0.0") # Report 0% progress if no files to process
         sys.exit(0)
 
-    for fname in image_files:
+    total_files = len(image_files)
+
+    for i, fname in enumerate(image_files):
         file_path = os.path.join(input_folder, fname)
         result = process_image(file_path, output_dir)
         if result is True: # Successfully processed
             processed_count += 1
-        elif result is False: # Skipped due to no content or error
-            # For simplicity, if `process_image` returns False, increment error_count.
-            # A more detailed return from `process_image` could differentiate.
-            error_count += 1 
+        else: # Skipped due to no content or error during processing
+            error_or_skipped_count += 1 
 
+        # Calculate progress and print for the UI
+        progress_percent = ((i + 1) / total_files) * 100
+        print(f"PROGRESS: {progress_percent:.1f}")
+        sys.stdout.flush() # Ensure the progress is sent immediately
 
     print(f"\n--- Processing Summary ---")
-    print(f"Total image files found: {len(image_files)}")
+    print(f"Total image files found: {total_files}")
     print(f"Successfully processed: {processed_count}")
-    print(f"Files with errors or skipped (e.g., no content): {error_count}")
+    print(f"Files with errors or skipped (e.g., no content): {error_or_skipped_count}")
     print(f"All done! Processed images are in: {output_dir}")
     
-    if error_count > 0:
+    if error_or_skipped_count > 0:
         sys.exit(1) # Indicate an error occurred
     sys.exit(0) # Indicate success
 

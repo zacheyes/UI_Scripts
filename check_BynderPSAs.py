@@ -5,7 +5,7 @@ from datetime import datetime
 import sys
 import argparse
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, TclError # Added TclError
 
 def print_progress(message, is_stderr=False):
     """
@@ -21,43 +21,59 @@ def print_progress(message, is_stderr=False):
         print(message, flush=True) # Flush all regular messages immediately
     
 
-def prompt_for_excel_file(title_msg="Select Excel Spreadsheet"):
-    """Prompt the user to select an Excel file and return its path."""
-    # Hide the main Tkinter window for the file dialog
-    root = tk.Tk()
-    root.withdraw()
-    file_path = filedialog.askopenfilename(
-        title=title_msg,
-        filetypes=[("Excel files", "*.xlsx *.xls")]
-    )
-    root.destroy() # Destroy the hidden root window
-    return file_path
-
-def _get_skus_from_input_data(sku_file_path, sku_list_str):
+def prompt_for_file(title_msg="Select File", file_types=None):
     """
-    Reads SKUs from either a spreadsheet file path or a comma-separated string.
+    Prompt the user to select a file using a Tkinter dialog.
+    Returns the selected path or None if cancelled.
+    """
+    try:
+        root = tk.Tk()
+        root.withdraw() # Hide the main Tkinter window
+        file_path = filedialog.askopenfilename(
+            title=title_msg,
+            filetypes=file_types if file_types else [("All files", "*.*")]
+        )
+        root.destroy() # Destroy the hidden root window
+        return file_path
+    except TclError:
+        print_progress("Warning: Tkinter GUI not available. Cannot prompt for file. Script might require direct arguments.", is_stderr=True)
+        return None
+    except Exception as e:
+        print_progress(f"Error opening file dialog: {e}", is_stderr=True)
+        return None
+
+
+def _get_skus_from_input_file(sku_file_path):
+    """
+    Reads SKUs from either an Excel spreadsheet file (.xlsx) or a plain text file (.txt).
     Returns a list of unique SKUs.
     """
     skus = []
-    if sku_file_path:
-        print_progress(f"Reading SKUs from spreadsheet: {sku_file_path}")
-        try:
+    if not sku_file_path or not os.path.exists(sku_file_path):
+        print_progress(f"Error: SKU list file not found or path is empty: {sku_file_path}", is_stderr=True)
+        return None
+
+    file_extension = os.path.splitext(sku_file_path)[1].lower()
+
+    try:
+        if file_extension in ('.xlsx', '.xls'):
+            print_progress(f"Reading SKUs from Excel spreadsheet: {sku_file_path}")
             # Assuming SKUs are in the first column of the Excel file
             df = pd.read_excel(sku_file_path, usecols=[0], dtype=str)
             skus = df.iloc[:, 0].dropna().astype(str).str.strip().tolist()
-        except FileNotFoundError:
-            print_progress(f"Error: SKU list file not found at {sku_file_path}.", is_stderr=True)
+        elif file_extension == '.txt':
+            print_progress(f"Reading SKUs from text file: {sku_file_path}")
+            with open(sku_file_path, 'r', encoding='utf-8') as f:
+                skus = [line.strip() for line in f if line.strip()]
+        else:
+            print_progress(f"Error: Unsupported SKU file type: {file_extension}. Please provide an .xlsx or .txt file.", is_stderr=True)
             return None
-        except Exception as e:
-            print_progress(f"Error reading SKU list from '{sku_file_path}': {e}", is_stderr=True)
-            return None
-    elif sku_list_str:
-        print_progress(f"Processing SKUs from text input...")
-        # Split by comma or whitespace, then filter out empty strings
-        skus = [s.strip() for s in sku_list_str.replace(',', ' ').split() if s.strip()]
+    except Exception as e:
+        print_progress(f"Error reading SKU list from '{sku_file_path}': {e}", is_stderr=True)
+        return None
     
     if not skus:
-        print_progress("No valid SKUs found in the provided input.", is_stderr=True)
+        print_progress("No valid SKUs found in the provided input file.", is_stderr=True)
         return None
     
     return list(pd.Series(skus).unique()) # Return unique SKUs
@@ -71,8 +87,7 @@ def main():
         
     # Set up argument parser
     parser = argparse.ArgumentParser(description="Check Bynder PSAs based on SKU list and asset report.")
-    parser.add_argument("--sku_file", help="Path to the Excel file containing SKUs.", default=None)
-    parser.add_argument("--sku_list", help="Comma-separated string of SKUs (from text input).", default=None)
+    parser.add_argument("--sku_file", help="Path to a file (Excel .xlsx or Text .txt) containing SKUs.", default=None)
 
     args = parser.parse_args()
 
@@ -81,23 +96,21 @@ def main():
     # --- Determine SKU List Input ---
     sku_input_data = None
     if args.sku_file:
-        # Running from UI with spreadsheet input
-        sku_input_data = _get_skus_from_input_data(args.sku_file, None)
-    elif args.sku_list:
-        # Running from UI with text box input
-        sku_input_data = _get_skus_from_input_data(None, args.sku_list)
+        # Running from UI or via command line with --sku_file
+        sku_input_data = _get_skus_from_input_file(args.sku_file)
     else:
         # Running standalone, prompt user for SKU list file
-        print_progress("No SKU list provided. Prompting user to select an Excel file for SKUs...")
-        sku_list_path = prompt_for_excel_file("Select SKU List Excel Spreadsheet")
+        print_progress("No SKU list file provided. Prompting user to select a file for SKUs...")
+        sku_list_path = prompt_for_file("Select SKU List File (.xlsx or .txt)", 
+                                        file_types=[("Excel files", "*.xlsx *.xls"), ("Text files", "*.txt"), ("All files", "*.*")])
         if not sku_list_path:
             print_progress("SKU list selection cancelled. Exiting.", is_stderr=True)
-            sys.exit(1)
-        sku_input_data = _get_skus_from_input_data(sku_list_path, None)
+            sys.exit(0) # Exit gracefully on cancel
+        sku_input_data = _get_skus_from_input_file(sku_list_path)
     
-    if sku_input_data is None:
+    if sku_input_data is None: # Covers cases where file not found, empty, or read error
         print_progress("PROGRESS: 0.0", is_stderr=True) # Reset progress on error
-        sys.exit(1) # Exit if SKU input parsing failed (either from arguments or standalone prompt)
+        sys.exit(1) # Exit with error code if SKU input parsing failed
 
     print_progress("PROGRESS: 10.0") # Progress after reading SKUs
 
@@ -176,19 +189,12 @@ def main():
     # Drop the duplicate SKU column from the report (it's the one we merged *from*)
     # and ensure the SKU column from the original list is preserved as 'SKU'.
     if sku_column_name_report in output_df.columns:
-        # Only drop if the column name exists and it's not the primary 'SKU' column we want to keep
-        if sku_column_name_report != 'SKU': # This check prevents dropping the primary SKU if names are identical
+        if sku_column_name_report != 'SKU': 
             output_df = output_df.drop(columns=[sku_column_name_report])
-        # If sku_column_name_report was 'SKU' and it was duplicated during merge, pandas might append '_x', '_y'.
-        # We ensure the original 'SKU' (from sku_list_df) remains.
         if 'SKU_x' in output_df.columns and 'SKU_y' in output_df.columns:
             output_df = output_df.rename(columns={'SKU_x': 'SKU'}).drop(columns=['SKU_y'])
-        elif 'SKU_x' in output_df.columns: # If only _x, implies original was 'SKU', report had same name
+        elif 'SKU_x' in output_df.columns:
              output_df = output_df.rename(columns={'SKU_x': 'SKU'})
-        # In this specific case, since we explicitly merged on sku_column_name_report and kept 'SKU' as left_on,
-        # pandas automatically handles the duplicate column if `sku_column_name_report` and 'SKU' were the same.
-        # The main goal here is to ensure the final output starts with 'SKU' column (from the input list)
-        # followed by the columns B-F from the report.
 
     # Reorder columns to ensure 'SKU' is first, then the selected report columns
     final_columns = ['SKU'] + [col for col in output_df.columns if col != 'SKU']
@@ -202,6 +208,9 @@ def main():
 
     print_progress(f"File saved to {output_path}")
     print_progress("PROGRESS: 100.0") # Final progress update
+
+    # The cleanup of the temporary SKU file is handled by the GUI.
+    # No need for this script to delete `args.sku_file` as it might be a user's original file.
 
 if __name__ == "__main__":
     main()

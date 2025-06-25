@@ -11,6 +11,7 @@ import requests
 import filecmp
 import threading
 import pandas as pd
+import tempfile # NEW: Import tempfile for temporary file creation
 
 # --- Configuration ---
 # Define your GitHub repository details
@@ -316,7 +317,7 @@ class Tooltip:
         self.tooltip_window.wm_geometry(f"+{self.x}+{self.y}")
 
         label = ttk.Label(self.tooltip_window, text=self.text, background=self.bg_color, relief=tk.SOLID, borderwidth=1,
-                                     font=("Arial", 11), foreground=self.text_color, wraplength=400)
+                                    font=("Arial", 11), foreground=self.text_color, wraplength=400)
         label.pack(padx=5, pady=5)
 
     def hide_tooltip(self, event=None):
@@ -627,9 +628,9 @@ class RenamerApp:
 
         if hasattr(self, 'log_text'):
             self.log_text.config(bg=self.log_bg, fg=self.log_text_color,
-                                     insertbackground=self.log_text_color,
-                                     selectbackground=self.accent_color,
-                                     selectforeground=self.RF_WHITE_BASE)
+                                   insertbackground=self.log_text_color,
+                                   selectbackground=self.accent_color,
+                                   selectforeground=self.RF_WHITE_BASE)
             self.log_text.tag_config('error', foreground='#FF6B6B')
             self.log_text.tag_config('success', foreground='#6BFF6B')
         
@@ -670,9 +671,9 @@ class RenamerApp:
                 widget.config(bg=self.primary_bg)
             elif isinstance(widget, scrolledtext.ScrolledText):
                 widget.config(bg=self.log_bg, fg=self.log_text_color,
-                                     insertbackground=self.log_text_color,
-                                     selectbackground=self.accent_color,
-                                     selectforeground=self.RF_WHITE_BASE)
+                                   insertbackground=self.log_text_color,
+                                   selectbackground=self.accent_color,
+                                   selectforeground=self.RF_WHITE_BASE)
 
         except tk.TclError:
             pass  
@@ -715,6 +716,8 @@ class RenamerApp:
             file_types = [("Excel files", "*.xlsx"), ("All files", "*.*")]
         elif file_type == "csv": # NEW: For CSV files
             file_types = [("CSV files", "*.csv"), ("All files", "*.*")]
+        elif file_type == "txt": # Added for potential temp file types
+            file_types = [("Text files", "*.txt"), ("All files", "*.*")]
         else:
             file_types = [("All files", "*.*")]
 
@@ -1257,7 +1260,7 @@ class RenamerApp:
         def bynder_prep_success_callback(output): # Now accepts output
             self.run_bynder_prep_button.config(state='normal') # Re-enable button
             messagebox.showinfo("Success", "Bynder Metadata Prep script completed successfully!\n"
-                                          "The metadata importer CSV should be in your downloads folder.")
+                                           "The metadata importer CSV should be in your downloads folder.")
         def bynder_prep_error_callback(output): # Now accepts output
             self.run_bynder_prep_button.config(state='normal') # Re-enable button
             messagebox.showerror("Error", "Bynder Metadata Prep script failed. Please check the log for details.")
@@ -1272,42 +1275,49 @@ class RenamerApp:
                                          initial_progress_text="Preparing Metadata...")
 
 
-    def _get_skus_from_input(self, input_type_var, spreadsheet_path_var, text_widget):
-        """Helper to get SKUs either from a spreadsheet (returns path) or textbox (returns list of SKUs).
-            Returns (data, is_spreadsheet_path) tuple.
-            is_spreadsheet_path is True if data is a path, False if data is a list of SKUs."""
+    def _get_skus_from_input(self, input_type_var, spreadsheet_path_var, text_widget, file_prefix="skus_"):
+        """
+        Helper to get SKUs/filenames either from a spreadsheet (returns path) or textbox.
+        If from textbox, it writes the content to a temporary .txt file and returns its path.
+        Returns (data, is_file_path) tuple.
+        is_file_path is True if data is a path, False if data is a list of SKUs (no longer used for textbox).
+        """
         
         if input_type_var.get() == "spreadsheet":
             input_path = spreadsheet_path_var.get()
             if not input_path or not os.path.exists(input_path) or not input_path.lower().endswith('.xlsx'):
                 messagebox.showerror("Input Error", "Please select a valid SKU Spreadsheet (.xlsx).")
                 return None, False
-            self.log_print(f"Reading SKUs from spreadsheet: {input_path}")
+            self.log_print(f"Reading SKUs/filenames from spreadsheet: {input_path}")
             return input_path, True
 
         elif input_type_var.get() == "textbox":
             raw_text = text_widget.get("1.0", tk.END).strip()
             if not raw_text:
-                messagebox.showerror("Input Error", "Please paste SKUs into the text box.")
+                messagebox.showerror("Input Error", "Please paste SKUs/filenames into the text box.")
                 return None, False
             
-            skus = []
-            for line in raw_text.splitlines():
-                parts = [p.strip() for p in line.split(',') if p.strip()]
-                if not parts:
-                    parts = [p.strip() for p in line.split() if p.strip()]
-                skus.extend(parts)
-            
-            skus = [s for s in skus if s]
+            # Write textbox content to a temporary .txt file
+            # tempfile.mkstemp returns (fd, path) where fd is a low-level file descriptor
+            temp_fd, temp_file_path = tempfile.mkstemp(suffix=".txt", prefix=file_prefix, dir=tempfile.gettempdir())
+            os.close(temp_fd) # Close the file descriptor, we will open with normal open()
 
-            if not skus:
-                messagebox.showerror("Input Error", "No valid SKUs found in the text box. Please check your input.")
+            try:
+                # Ensure each item is on a new line for the script to read
+                content_to_write = "\n".join(line.strip() for line in raw_text.splitlines() if line.strip())
+                with open(temp_file_path, "w", encoding="utf-8") as f:
+                    f.write(content_to_write)
+                self.log_print(f"Content from text box written to temporary file: {temp_file_path}")
+                return temp_file_path, True # Always return a file path
+            except Exception as e:
+                messagebox.showerror("File Error", f"Failed to write temporary file: {e}")
+                self.log_print(f"Error writing temporary file: {e}\n", is_stderr=True)
+                if os.path.exists(temp_file_path): # Clean up if creation failed mid-way
+                    os.remove(temp_file_path)
                 return None, False
-
-            self.log_print(f"Processing SKUs from text box: {', '.join(skus[:5])}...")
-            return skus, False
-        
+                
         return None, False
+
 
     def _run_check_psas_script(self):
         scripts_folder = self.scripts_root_folder.get()
@@ -1319,10 +1329,13 @@ class RenamerApp:
                                           f"Please ensure '{check_psas_script_name}' is in your scripts folder.")
             return
         
-        sku_input_data, is_spreadsheet_path = self._get_skus_from_input(
+        # sku_input_data will now always be a file path if the textbox method is used.
+        # is_file_path will be True.
+        sku_input_data, is_file_path = self._get_skus_from_input( 
             self.check_psa_input_type,  
             self.check_psa_sku_spreadsheet_path,  
-            self.check_psa_text_widget
+            self.check_psa_text_widget,
+            file_prefix="check_psas_skus_" # Specific prefix for temp file
         )
         if sku_input_data is None:
             return
@@ -1330,20 +1343,32 @@ class RenamerApp:
         self.log_print(f"\n--- Running Check Bynder PSAs Script ({check_psas_script_name}) ---")
         
         args = []
-        if is_spreadsheet_path:
-            self.log_print(f"Using SKU input from spreadsheet: {sku_input_data}")
-            args.extend(["--sku_file", sku_input_data])
-        else:
-            self.log_print(f"Using SKU input from text box (count: {len(sku_input_data)})")
-            args.extend(["--sku_list", ",".join(sku_input_data)])
+        # Always pass as a file argument now, as _get_skus_from_input ensures it's a file path
+        self.log_print(f"Passing SKU input file: {sku_input_data}")
+        args.extend(["--sku_file", sku_input_data]) # Script should read from this file
             
         def check_psas_success_callback(output): # Now accepts output
             self.run_check_psas_button.config(state='normal')
             messagebox.showinfo("Success", "Check Bynder PSAs script completed successfully!\n"
-                                          "Results should be in your downloads folder.")
+                                           "Results should be in your downloads folder.")
+            # Clean up temporary file if it was created from textbox input
+            if self.check_psa_input_type.get() == "textbox" and is_file_path and os.path.exists(sku_input_data):
+                try:
+                    os.remove(sku_input_data)
+                    self.log_print(f"Cleaned up temporary file: {sku_input_data}\n")
+                except Exception as e:
+                    self.log_print(f"Warning: Could not remove temporary file {sku_input_data}: {e}\n", is_stderr=True)
+
         def check_psas_error_callback(output): # Now accepts output
             self.run_check_psas_button.config(state='normal')
             messagebox.showerror("Error", "Check Bynder PSAs script failed. Please check the log for details.")
+            # Clean up temporary file if it was created from textbox input
+            if self.check_psa_input_type.get() == "textbox" and is_file_path and os.path.exists(sku_input_data):
+                try:
+                    os.remove(sku_input_data)
+                    self.log_print(f"Cleaned up temporary file: {sku_input_data}\n")
+                except Exception as e:
+                    self.log_print(f"Warning: Could not remove temporary file {sku_input_data}: {e}\n", is_stderr=True)
 
         self.run_check_psas_button.config(state='disabled')
 
@@ -1365,10 +1390,11 @@ class RenamerApp:
                                           f"Please ensure '{download_psas_script_name}' is in your scripts folder.")
             return
         
-        sku_input_data, is_spreadsheet_path = self._get_skus_from_input(
+        sku_input_data, is_file_path = self._get_skus_from_input(
             self.download_psa_input_type,
             self.download_psa_sku_spreadsheet_path,
-            self.download_psa_text_widget
+            self.download_psa_text_widget,
+            file_prefix="download_psas_skus_" # Specific prefix for temp file
         )
         if sku_input_data is None:
             return
@@ -1400,12 +1426,9 @@ class RenamerApp:
             self.log_print("No specific image types selected in UI. Script might default or prompt.")
 
         args = []
-        if is_spreadsheet_path:
-            self.log_print(f"SKU input from spreadsheet: {sku_input_data}")
-            args.extend(["--sku_file", sku_input_data])
-        else:
-            self.log_print(f"SKU input from text box (count: {len(sku_input_data)})")
-            args.extend(["--sku_list", ",".join(sku_input_data)])
+        # Always pass as a file argument
+        self.log_print(f"Passing SKU input file: {sku_input_data}")
+        args.extend(["--sku_file", sku_input_data]) # Script should read from this file
 
         args.extend(["--output_folder", output_folder_path])
         if image_types_arg:
@@ -1414,10 +1437,25 @@ class RenamerApp:
         def download_success_callback(output): # Now accepts output
             self.run_download_psas_button.config(state='normal') # Re-enable button
             messagebox.showinfo("Success", f"Download PSAs script completed successfully!\n"
-                                          f"Results are in the selected output folder: {output_folder_path}")
+                                           f"Results are in the selected output folder: {output_folder_path}")
+            # Clean up temporary file if it was created from textbox input
+            if self.download_psa_input_type.get() == "textbox" and is_file_path and os.path.exists(sku_input_data):
+                try:
+                    os.remove(sku_input_data)
+                    self.log_print(f"Cleaned up temporary file: {sku_input_data}\n")
+                except Exception as e:
+                    self.log_print(f"Warning: Could not remove temporary file {sku_input_data}: {e}\n", is_stderr=True)
+
         def download_error_callback(output): # Now accepts output
             self.run_download_psas_button.config(state='normal') # Re-enable button
             messagebox.showerror("Error", "Download PSAs script failed. Please check the log for details.")
+            # Clean up temporary file if it was created from textbox input
+            if self.download_psa_input_type.get() == "textbox" and is_file_path and os.path.exists(sku_input_data):
+                try:
+                    os.remove(sku_input_data)
+                    self.log_print(f"Cleaned up temporary file: {sku_input_data}\n")
+                except Exception as e:
+                    self.log_print(f"Warning: Could not remove temporary file {sku_input_data}: {e}\n", is_stderr=True)
 
         self.run_download_psas_button.config(state='disabled')
 
@@ -1440,10 +1478,11 @@ class RenamerApp:
                                           f"Please ensure '{get_measurements_script_name}' is in your scripts folder.")
             return
 
-        sku_input_data, is_spreadsheet_path = self._get_skus_from_input(
+        sku_input_data, is_file_path = self._get_skus_from_input(
             self.get_measurements_input_type,  
             self.get_measurements_sku_spreadsheet_path,  
-            self.get_measurements_text_widget
+            self.get_measurements_text_widget,
+            file_prefix="get_measurements_skus_" # Specific prefix for temp file
         )
         if sku_input_data is None:
             return
@@ -1451,14 +1490,16 @@ class RenamerApp:
         output_location_message = ""
         output_folder_for_script = ""
 
-        if is_spreadsheet_path:
-            output_folder_for_script = os.path.dirname(sku_input_data)
+        # Determine the output folder. If input is a spreadsheet, use its directory.
+        # Otherwise, use Downloads.
+        if self.get_measurements_input_type.get() == "spreadsheet":
+            output_folder_for_script = os.path.dirname(sku_input_data) # sku_input_data is the spreadsheet path
             output_location_message = f"Results should be in the same folder as your spreadsheet: {output_folder_for_script}"
             self.log_print(f"SKU input from spreadsheet: {sku_input_data}")
-        else:
+        else: # textbox input, which is now a temp file
             output_folder_for_script = os.path.join(os.path.expanduser("~"), "Downloads")
             output_location_message = "Results should be in your Downloads folder."
-            self.log_print(f"SKU input from text box (count: {len(sku_input_data)})")
+            self.log_print(f"SKU input from text box (now temp file): {sku_input_data}") # Log the temp file path
 
         self._ensure_dir(output_folder_for_script)
 
@@ -1467,20 +1508,33 @@ class RenamerApp:
         self.log_print("NOTE: The script will use its default or hardcoded paths for STEP exports.")
 
         args = []
-        if is_spreadsheet_path:
-            args.extend(["--sku_list_file", sku_input_data])
-        else:
-            args.extend(["--sku_list", ",".join(sku_input_data)])
+        # Always pass as a file argument to the script
+        args.extend(["--sku_list_file", sku_input_data]) # Script should read from this file
 
         args.extend(["--output_folder", output_folder_for_script])
             
         def get_measurements_success_callback(output): # Now accepts output
             self.run_get_measurements_button.config(state='normal')
             messagebox.showinfo("Success", f"Get Measurements script completed successfully!\n"
-                                          f"{output_location_message}")
+                                           f"{output_location_message}")
+            # Clean up temporary file if it was created from textbox input
+            if self.get_measurements_input_type.get() == "textbox" and is_file_path and os.path.exists(sku_input_data):
+                try:
+                    os.remove(sku_input_data)
+                    self.log_print(f"Cleaned up temporary file: {sku_input_data}\n")
+                except Exception as e:
+                    self.log_print(f"Warning: Could not remove temporary file {sku_input_data}: {e}\n", is_stderr=True)
+
         def get_measurements_error_callback(output): # Now accepts output
             self.run_get_measurements_button.config(state='normal')
             messagebox.showerror("Error", "Get Measurements script failed. Please check the log for details.")
+            # Clean up temporary file if it was created from textbox input
+            if self.get_measurements_input_type.get() == "textbox" and is_file_path and os.path.exists(sku_input_data):
+                try:
+                    os.remove(sku_input_data)
+                    self.log_print(f"Cleaned up temporary file: {sku_input_data}\n")
+                except Exception as e:
+                    self.log_print(f"Warning: Could not remove temporary file {sku_input_data}: {e}\n", is_stderr=True)
 
         self.run_get_measurements_button.config(state='disabled')
 
@@ -1521,7 +1575,7 @@ class RenamerApp:
         def convert_success_callback(output): # Now accepts output
             self.run_bynder_metadata_convert_button.config(state='normal')
             messagebox.showinfo("Success", f"Bynder Metadata CSV converted successfully!\n"
-                                          f"The converted Excel file is in your Downloads folder.")
+                                           f"The converted Excel file is in your Downloads folder.")
         def convert_error_callback(output): # Now accepts output
             self.run_bynder_metadata_convert_button.config(state='normal')
             messagebox.showerror("Error", "Bynder Metadata conversion failed. Please check the log for details.")
@@ -1556,11 +1610,13 @@ class RenamerApp:
         if not destination_folder:
             messagebox.showerror("Input Error", "Please select a Destination Folder.")
             return
+        os.makedirs(destination_folder, exist_ok=True) # Ensure destination exists
 
-        file_input_data, is_spreadsheet_path = self._get_skus_from_input(
+        file_input_data, is_file_path = self._get_skus_from_input( # Renamed is_spreadsheet_path to is_file_path
             self.move_files_input_type,
             self.move_files_excel_path, # This variable will hold the path to the excel file
-            self.move_files_text_widget # This widget will hold the text input
+            self.move_files_text_widget, # This widget will hold the text input
+            file_prefix="move_files_filenames_" # Specific prefix for temp file
         )
         if file_input_data is None:
             return
@@ -1570,13 +1626,10 @@ class RenamerApp:
         self.log_print(f"Destination Folder: {destination_folder}")
 
         args = ["--source_folder", source_folder, "--destination_folder", destination_folder]
-        if is_spreadsheet_path:
-            self.log_print(f"File names from spreadsheet: {file_input_data}")
-            args.extend(["--excel_file", file_input_data])
-        else:
-            self.log_print(f"File names from text box (count: {len(file_input_data)})")
-            args.extend(["--filenames_list", ",".join(file_input_data)])
-
+        # Always pass a file argument
+        self.log_print(f"Passing filenames input file: {file_input_data}")
+        args.extend(["--filenames_file", file_input_data]) # Script should read from this file, updated arg name
+        
         # Define specific callbacks for Move Files
         def move_files_success_callback(output):
             self.run_move_files_button.config(state='normal')
@@ -1601,10 +1654,25 @@ class RenamerApp:
                 messagebox.showinfo("No Files Specified", "The script completed, but no files were specified in the input Excel or textbox.")
             else:
                 messagebox.showinfo("Success", f"Move Files script completed successfully! {moved_count} of {total_attempted} files moved.")
+            
+            # Clean up temporary file if it was created from textbox input
+            if self.move_files_input_type.get() == "textbox" and is_file_path and os.path.exists(file_input_data):
+                try:
+                    os.remove(file_input_data)
+                    self.log_print(f"Cleaned up temporary file: {file_input_data}\n")
+                except Exception as e:
+                    self.log_print(f"Warning: Could not remove temporary file {file_input_data}: {e}\n", is_stderr=True)
         
         def move_files_error_callback(output): # Now accepts output
             self.run_move_files_button.config(state='normal')
             messagebox.showerror("Error", "Move Files script failed. Please check the log for details.")
+            # Clean up temporary file if it was created from textbox input
+            if self.move_files_input_type.get() == "textbox" and is_file_path and os.path.exists(file_input_data):
+                try:
+                    os.remove(file_input_data)
+                    self.log_print(f"Cleaned up temporary file: {file_input_data}\n")
+                except Exception as e:
+                    self.log_print(f"Warning: Could not remove temporary file {file_input_data}: {e}\n", is_stderr=True)
 
         self.run_move_files_button.config(state='disabled')
 
@@ -1679,7 +1747,7 @@ class RenamerApp:
         self.theme_label.pack(side="left", padx=(0, 5))
         
         self.theme_selector = ttk.Combobox(theme_frame, textvariable=self.current_theme,  
-                                             values=["Light", "Dark"], state="readonly", width=6)
+                                            values=["Light", "Dark"], state="readonly", width=6)
         self.theme_selector.pack(side="left")
         self.theme_selector.bind("<<ComboboxSelected>>", self._on_theme_change)
         
@@ -2140,8 +2208,8 @@ class RenamerApp:
         self.check_psa_textbox_frame = ttk.Frame(check_psas_frame, style='TFrame')
         ttk.Label(self.check_psa_textbox_frame, text="Paste SKUs (one per line):", style='TLabel').pack(padx=5, pady=5, anchor="w")
         self.check_psa_text_widget = scrolledtext.ScrolledText(self.check_psa_textbox_frame, width=60, height=8, font=self.base_font,
-                                                               bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
-                                                               insertbackground=self.text_color, relief="solid", borderwidth=1)
+                                                              bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
+                                                              insertbackground=self.text_color, relief="solid", borderwidth=1)
         self.check_psa_text_widget.pack(padx=5, pady=(0, 5), fill="both", expand=True)
 
         # --- Check Bynder PSAs: button and progress bar layout ---
@@ -2200,8 +2268,8 @@ class RenamerApp:
         self.download_psa_textbox_frame = ttk.Frame(download_psas_frame, style='TFrame')
         ttk.Label(self.download_psa_textbox_frame, text="Paste SKUs (one per line):", style='TLabel').pack(padx=5, pady=5, anchor="w")
         self.download_psa_text_widget = scrolledtext.ScrolledText(self.download_psa_textbox_frame, width=60, height=8, font=self.base_font,
-                                                                 bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
-                                                                 insertbackground=self.text_color, relief="solid", borderwidth=1)
+                                                                bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
+                                                                insertbackground=self.text_color, relief="solid", borderwidth=1)
         self.download_psa_text_widget.pack(padx=5, pady=(0, 5), fill="both", expand=True)
 
         self.download_psa_spreadsheet_frame.grid(row=1, column=0, columnspan=3, sticky="ew")
@@ -2292,8 +2360,8 @@ class RenamerApp:
         self.get_measurements_textbox_frame.grid(row=1, column=0, columnspan=3, sticky="nsew")
         ttk.Label(self.get_measurements_textbox_frame, text="Paste SKUs (one per line):", style='TLabel').pack(padx=5, pady=5, anchor="w")
         self.get_measurements_text_widget = scrolledtext.ScrolledText(self.get_measurements_textbox_frame, width=60, height=8, font=self.base_font,
-                                                                 bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
-                                                                 insertbackground=self.text_color, relief="solid", borderwidth=1)
+                                                                    bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
+                                                                    insertbackground=self.text_color, relief="solid", borderwidth=1)
         self.get_measurements_text_widget.pack(padx=5, pady=(0, 5), fill="both", expand=True)
 
         # --- MODIFIED Section: Get Measurements button and progress bar layout ---
@@ -2373,8 +2441,8 @@ class RenamerApp:
         self.move_files_textbox_frame.grid(row=3, column=0, columnspan=3, sticky="nsew")
         ttk.Label(self.move_files_textbox_frame, text="Paste Filenames (one per line):", style='TLabel').pack(padx=5, pady=5, anchor="w")
         self.move_files_text_widget = scrolledtext.ScrolledText(self.move_files_textbox_frame, width=60, height=8, font=self.base_font,
-                                                                bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
-                                                                insertbackground=self.text_color, relief="solid", borderwidth=1)
+                                                                 bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
+                                                                 insertbackground=self.text_color, relief="solid", borderwidth=1)
         self.move_files_text_widget.pack(padx=5, pady=(0, 5), fill="both", expand=True)
 
         # Initially show the spreadsheet frame and hide the textbox frame

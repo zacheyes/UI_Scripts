@@ -273,13 +273,13 @@ def run_script_wrapper(script_full_path, is_python_script, args=None, log_output
            run_button_wrapper is not None and progress_wrapper is not None:
             # All progress-related widgets are provided, use the async version
             return _run_script_with_progress(script_full_path, args, log_output_widget,
-                                              progress_bar, progress_label, run_button_wrapper,
-                                              progress_wrapper, success_callback, error_callback,
-                                              initial_progress_text)
+                                             progress_bar, progress_label, run_button_wrapper,
+                                             progress_wrapper, success_callback, error_callback,
+                                             initial_progress_text)
         else:
             # No progress widgets (or not all of them), use the blocking version
             return _run_script_no_progress(script_full_path, args, log_output_widget,
-                                              success_callback, error_callback)
+                                             success_callback, error_callback)
     else: # For non-Python files (e.g., opening a .xlsx template)
         _append_to_log(log_output_widget, f"Opening file: {script_full_path}\n")
         try:
@@ -317,7 +317,7 @@ class Tooltip:
         self.tooltip_window.wm_geometry(f"+{self.x}+{self.y}")
 
         label = ttk.Label(self.tooltip_window, text=self.text, background=self.bg_color, relief=tk.SOLID, borderwidth=1,
-                                 font=("Arial", 11), foreground=self.text_color, wraplength=400)
+                                     font=("Arial", 11), foreground=self.text_color, wraplength=400)
         label.pack(padx=5, pady=5)
 
     def hide_tooltip(self, event=None):
@@ -567,8 +567,8 @@ class RenamerApp:
                              relief='flat',
                              padding=5)
         self.style.map('TButton',
-                       background=[('active', self._shade_color(self.accent_color, -0.1))],  
-                       foreground=[('active', self.RF_WHITE_BASE)])  
+                        background=[('active', self._shade_color(self.accent_color, -0.1))],  
+                        foreground=[('active', self.RF_WHITE_BASE)])  
 
         self.style.configure('TEntry',
                              fieldbackground=self.secondary_bg,
@@ -582,7 +582,7 @@ class RenamerApp:
                              bordercolor=self.trough_color,
                              arrowcolor=self.text_color)
         self.style.map('TScrollbar',
-                       background=[('active', self._shade_color(self.slider_color, -0.1))])
+                        background=[('active', self._shade_color(self.slider_color, -0.1))])
 
         self.style.configure('TNotebook',
                              background=self.primary_bg,
@@ -593,9 +593,9 @@ class RenamerApp:
                              font=self.base_font,
                              padding=[5, 2])
         self.style.map('TNotebook.Tab',
-                       background=[('selected', self.accent_color)],
-                       foreground=[('selected', self.RF_WHITE_BASE)],  
-                       expand=[('selected', [1, 1, 1, 0])])  
+                        background=[('selected', self.accent_color)],
+                        foreground=[('selected', self.RF_WHITE_BASE)],  
+                        expand=[('selected', [1, 1, 1, 0])])  
 
         self.style.configure('TRadiobutton',
                              background=self.primary_bg,
@@ -603,9 +603,9 @@ class RenamerApp:
                              font=self.base_font,
                              indicatorcolor=self.accent_color)
         self.style.map('TRadiobutton',
-                       background=[('active', self.radiobutton_hover_bg)],  # Hover background
-                       foreground=[('active', self.text_color)],
-                       indicatorcolor=[('selected', self.accent_color), ('!selected', self.checkbox_indicator_off)]) # Corrected indicator color for selected/unselected
+                        background=[('active', self.radiobutton_hover_bg)],  # Hover background
+                        foreground=[('active', self.text_color)],
+                        indicatorcolor=[('selected', self.accent_color), ('!selected', self.checkbox_indicator_off)]) # Corrected indicator color for selected/unselected
         
         self.style.configure('TCheckbutton',
                              background=self.primary_bg,
@@ -613,9 +613,9 @@ class RenamerApp:
                              font=self.base_font,
                              indicatorcolor=self.checkbox_indicator_off) # Default indicator color when off
         self.style.map('TCheckbutton',
-                       background=[('active', self.checkbox_hover_bg)], # Hover background
-                       foreground=[('active', self.text_color)],
-                       indicatorcolor=[('selected', self.checkbox_indicator_on), ('!selected', self.checkbox_indicator_off)])
+                        background=[('active', self.checkbox_hover_bg)], # Hover background
+                        foreground=[('active', self.text_color)],
+                        indicatorcolor=[('selected', self.checkbox_indicator_on), ('!selected', self.checkbox_indicator_off)])
 
         self.style.configure('TSeparator', background=self.border_color, relief='solid', sashrelief='solid', sashwidth=3) # Made separator thick
         self.style.layout('TSeparator',
@@ -627,11 +627,11 @@ class RenamerApp:
                              foreground=self.text_color,
                              arrowcolor=self.text_color)
         self.style.map('TCombobox',
-                       fieldbackground=[('readonly', self.secondary_bg)],
-                       background=[('readonly', self.primary_bg)],
-                       foreground=[('readonly', self.text_color)],
-                       selectbackground=[('readonly', self._shade_color(self.secondary_bg, -0.05))],  
-                       selectforeground=[('readonly', self.text_color)])  
+                        fieldbackground=[('readonly', self.secondary_bg)],
+                        background=[('readonly', self.primary_bg)],
+                        foreground=[('readonly', self.text_color)],
+                        selectbackground=[('readonly', self._shade_color(self.secondary_bg, -0.05))],  
+                        selectforeground=[('readonly', self.text_color)])  
 
         if hasattr(self, 'log_text'):
             self.log_text.config(bg=self.log_bg, fg=self.log_text_color,
@@ -1083,7 +1083,7 @@ class RenamerApp:
     # MODIFIED: _start_inline_copy now mimics _start_pso2_copy
     def _start_inline_copy(self):
         network_folder = self.inline_source_folder.get() # Renamed to reflect its new role
-        matrix_path = self.inline_matrix_path.get()        # New input for matrix
+        matrix_path = self.inline_matrix_path.get()      # New input for matrix
         output_folder = self.inline_output_folder.get()
         copier_script_path = os.path.join(self.scripts_root_folder.get(), SCRIPT_FILENAMES["File Copier Script"])
 
@@ -1267,7 +1267,7 @@ class RenamerApp:
         def bynder_prep_success_callback(output): # Now accepts output
             self.run_bynder_prep_button.config(state='normal') # Re-enable button
             messagebox.showinfo("Success", "Bynder Metadata Prep script completed successfully!\n"
-                                           "The metadata importer CSV should be in your downloads folder.")
+                                         "The metadata importer CSV should be in your downloads folder.")
         def bynder_prep_error_callback(output): # Now accepts output
             self.run_bynder_prep_button.config(state='normal') # Re-enable button
             messagebox.showerror("Error", "Bynder Metadata Prep script failed. Please check the log for details.")
@@ -1357,7 +1357,7 @@ class RenamerApp:
         def check_psas_success_callback(output): # Now accepts output
             self.run_check_psas_button.config(state='normal')
             messagebox.showinfo("Success", "Check Bynder PSAs script completed successfully!\n"
-                                           "Results should be in your downloads folder.")
+                                         "Results should be in your downloads folder.")
             # Clean up temporary file if it was created from textbox input
             if self.check_psa_input_type.get() == "textbox" and is_file_path and os.path.exists(sku_input_data):
                 try:
@@ -1449,7 +1449,7 @@ class RenamerApp:
         def download_success_callback(output): # Now accepts output
             self.run_download_psas_button.config(state='normal') # Re-enable button
             messagebox.showinfo("Success", f"Download PSAs script completed successfully!\n"
-                                           f"Results are in the selected output folder: {output_folder_path}")
+                                         f"Results are in the selected output folder: {output_folder_path}")
             # Clean up temporary file if it was created from textbox input
             if self.download_psa_input_type.get() == "textbox" and is_file_path and os.path.exists(sku_input_data):
                 try:
@@ -1526,7 +1526,7 @@ class RenamerApp:
         def get_measurements_success_callback(output): # Now accepts output
             self.run_get_measurements_button.config(state='normal')
             messagebox.showinfo("Success", f"Get Measurements script completed successfully!\n"
-                                           f"{output_location_message}")
+                                         f"{output_location_message}")
             # Clean up temporary file if it was created from textbox input
             if self.get_measurements_input_type.get() == "textbox" and is_file_path and os.path.exists(sku_input_data):
                 try:
@@ -1583,7 +1583,7 @@ class RenamerApp:
         def convert_success_callback(output): # Now accepts output
             self.run_bynder_metadata_convert_button.config(state='normal')
             messagebox.showinfo("Success", f"Bynder Metadata CSV converted successfully!\n"
-                                           f"The converted Excel file is in your Downloads folder.")
+                                         f"The converted Excel file is in your Downloads folder.")
         def convert_error_callback(output): # Now accepts output
             self.run_bynder_metadata_convert_button.config(state='normal')
             messagebox.showerror("Error", "Bynder Metadata conversion failed. Please check the log for details.")
@@ -1753,7 +1753,7 @@ class RenamerApp:
         self.theme_label.pack(side="left", padx=(0, 5))
         
         self.theme_selector = ttk.Combobox(theme_frame, textvariable=self.current_theme,  
-                                           values=["Light", "Dark"], state="readonly", width=6)
+                                         values=["Light", "Dark"], state="readonly", width=6)
         self.theme_selector.pack(side="left")
         self.theme_selector.bind("<<ComboboxSelected>>", self._on_theme_change)
         
@@ -2115,11 +2115,11 @@ class RenamerApp:
 
         # Grid the buttons within their wrapper frame
         self.cropping_buttons["1688_silo"].grid(row=0, column=0, padx=5, pady=5, sticky="ew")
-        self.cropping_buttons["1688_room_cutTopBot"].grid(row=0, column=1, padx=5, pady=5, sticky="ew")
+        self.cropping_buttons["2200_silo"].grid(row=0, column=1, padx=5, pady=5, sticky="ew")
         self.cropping_buttons["1688_room"].grid(row=1, column=0, padx=5, pady=5, sticky="ew")
-        self.cropping_buttons["2200_silo"].grid(row=1, column=1, padx=5, pady=5, sticky="ew")
+        self.cropping_buttons["2200_room"].grid(row=1, column=1, padx=5, pady=5, sticky="ew")
         self.cropping_buttons["1688_room_cutLR"].grid(row=2, column=0, padx=5, pady=5, sticky="ew")
-        self.cropping_buttons["2200_room"].grid(row=2, column=1, padx=5, pady=5, sticky="ew")
+        self.cropping_buttons["1688_room_cutTopBot"].grid(row=2, column=1, padx=5, pady=5, sticky="ew")
         self.cropping_run_button_wrapper.grid_columnconfigure(0, weight=1)
         self.cropping_run_button_wrapper.grid_columnconfigure(1, weight=1)
 
@@ -2214,8 +2214,8 @@ class RenamerApp:
         self.check_psa_textbox_frame = ttk.Frame(check_psas_frame, style='TFrame')
         ttk.Label(self.check_psa_textbox_frame, text="Paste SKUs (one per line):", style='TLabel').pack(padx=5, pady=5, anchor="w")
         self.check_psa_text_widget = scrolledtext.ScrolledText(self.check_psa_textbox_frame, width=60, height=8, font=self.base_font,
-                                                               bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
-                                                               insertbackground=self.text_color, relief="solid", borderwidth=1)
+                                                             bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
+                                                             insertbackground=self.text_color, relief="solid", borderwidth=1)
         self.check_psa_text_widget.pack(padx=5, pady=(0, 5), fill="both", expand=True)
 
         # --- Check Bynder PSAs: button and progress bar layout ---
@@ -2274,8 +2274,8 @@ class RenamerApp:
         self.download_psa_textbox_frame = ttk.Frame(download_psas_frame, style='TFrame')
         ttk.Label(self.download_psa_textbox_frame, text="Paste SKUs (one per line):", style='TLabel').pack(padx=5, pady=5, anchor="w")
         self.download_psa_text_widget = scrolledtext.ScrolledText(self.download_psa_textbox_frame, width=60, height=8, font=self.base_font,
-                                                                  bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
-                                                                  insertbackground=self.text_color, relief="solid", borderwidth=1)
+                                                                 bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
+                                                                 insertbackground=self.text_color, relief="solid", borderwidth=1)
         self.download_psa_text_widget.pack(padx=5, pady=(0, 5), fill="both", expand=True)
 
         self.download_psa_spreadsheet_frame.grid(row=1, column=0, columnspan=3, sticky="ew")
@@ -2372,8 +2372,8 @@ class RenamerApp:
         self.get_measurements_textbox_frame.grid(row=1, column=0, columnspan=3, sticky="nsew")
         ttk.Label(self.get_measurements_textbox_frame, text="Paste SKUs (one per line):", style='TLabel').pack(padx=5, pady=5, anchor="w")
         self.get_measurements_text_widget = scrolledtext.ScrolledText(self.get_measurements_textbox_frame, width=60, height=8, font=self.base_font,
-                                                                      bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
-                                                                      insertbackground=self.text_color, relief="solid", borderwidth=1)
+                                                                 bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
+                                                                 insertbackground=self.text_color, relief="solid", borderwidth=1)
         self.get_measurements_text_widget.pack(padx=5, pady=(0, 5), fill="both", expand=True)
 
         # --- MODIFIED Section: Get Measurements button and progress bar layout ---
@@ -2453,8 +2453,8 @@ class RenamerApp:
         self.move_files_textbox_frame.grid(row=3, column=0, columnspan=3, sticky="nsew")
         ttk.Label(self.move_files_textbox_frame, text="Paste Filenames (one per line):", style='TLabel').pack(padx=5, pady=5, anchor="w")
         self.move_files_text_widget = scrolledtext.ScrolledText(self.move_files_textbox_frame, width=60, height=8, font=self.base_font,
-                                                                bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
-                                                                insertbackground=self.text_color, relief="solid", borderwidth=1)
+                                                                 bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
+                                                                 insertbackground=self.text_color, relief="solid", borderwidth=1)
         self.move_files_text_widget.pack(padx=5, pady=(0, 5), fill="both", expand=True)
 
         # Initially show the spreadsheet frame and hide the textbox frame

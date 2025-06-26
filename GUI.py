@@ -273,13 +273,13 @@ def run_script_wrapper(script_full_path, is_python_script, args=None, log_output
            run_button_wrapper is not None and progress_wrapper is not None:
             # All progress-related widgets are provided, use the async version
             return _run_script_with_progress(script_full_path, args, log_output_widget,
-                                             progress_bar, progress_label, run_button_wrapper,
-                                             progress_wrapper, success_callback, error_callback,
-                                             initial_progress_text)
+                                              progress_bar, progress_label, run_button_wrapper,
+                                              progress_wrapper, success_callback, error_callback,
+                                              initial_progress_text)
         else:
             # No progress widgets (or not all of them), use the blocking version
             return _run_script_no_progress(script_full_path, args, log_output_widget,
-                                             success_callback, error_callback)
+                                              success_callback, error_callback)
     else: # For non-Python files (e.g., opening a .xlsx template)
         _append_to_log(log_output_widget, f"Opening file: {script_full_path}\n")
         try:
@@ -317,7 +317,7 @@ class Tooltip:
         self.tooltip_window.wm_geometry(f"+{self.x}+{self.y}")
 
         label = ttk.Label(self.tooltip_window, text=self.text, background=self.bg_color, relief=tk.SOLID, borderwidth=1,
-                                    font=("Arial", 11), foreground=self.text_color, wraplength=400)
+                                 font=("Arial", 11), foreground=self.text_color, wraplength=400)
         label.pack(padx=5, pady=5)
 
     def hide_tooltip(self, event=None):
@@ -394,6 +394,13 @@ class RenamerApp:
         self.download_psa_500 = tk.BooleanVar(value=False)
         self.download_psa_dimension = tk.BooleanVar(value=False)
         self.download_psa_swatch = tk.BooleanVar(value=False)
+        # NEW: Add new BooleanVars for the additional image types
+        self.download_psa_5000 = tk.BooleanVar(value=False)
+        self.download_psa_5100 = tk.BooleanVar(value=False)
+        self.download_psa_5200 = tk.BooleanVar(value=False)
+        self.download_psa_5300 = tk.BooleanVar(value=False)
+        self.download_psa_squareThumbnail = tk.BooleanVar(value=False)
+
 
         self.log_expanded = False
 
@@ -628,9 +635,9 @@ class RenamerApp:
 
         if hasattr(self, 'log_text'):
             self.log_text.config(bg=self.log_bg, fg=self.log_text_color,
-                                   insertbackground=self.log_text_color,
-                                   selectbackground=self.accent_color,
-                                   selectforeground=self.RF_WHITE_BASE)
+                                 insertbackground=self.log_text_color,
+                                 selectbackground=self.accent_color,
+                                 selectforeground=self.RF_WHITE_BASE)
             self.log_text.tag_config('error', foreground='#FF6B6B')
             self.log_text.tag_config('success', foreground='#6BFF6B')
         
@@ -671,9 +678,9 @@ class RenamerApp:
                 widget.config(bg=self.primary_bg)
             elif isinstance(widget, scrolledtext.ScrolledText):
                 widget.config(bg=self.log_bg, fg=self.log_text_color,
-                                   insertbackground=self.log_text_color,
-                                   selectbackground=self.accent_color,
-                                   selectforeground=self.RF_WHITE_BASE)
+                                 insertbackground=self.log_text_color,
+                                 selectbackground=self.accent_color,
+                                 selectforeground=self.RF_WHITE_BASE)
 
         except tk.TclError:
             pass  
@@ -1331,7 +1338,7 @@ class RenamerApp:
         
         # sku_input_data will now always be a file path if the textbox method is used.
         # is_file_path will be True.
-        sku_input_data, is_file_path = self._get_skus_from_input( 
+        sku_input_data, is_file_path = self._get_skus_from_input(  
             self.check_psa_input_type,  
             self.check_psa_sku_spreadsheet_path,  
             self.check_psa_text_widget,
@@ -1355,7 +1362,6 @@ class RenamerApp:
             if self.check_psa_input_type.get() == "textbox" and is_file_path and os.path.exists(sku_input_data):
                 try:
                     os.remove(sku_input_data)
-                    self.log_print(f"Cleaned up temporary file: {sku_input_data}\n")
                 except Exception as e:
                     self.log_print(f"Warning: Could not remove temporary file {sku_input_data}: {e}\n", is_stderr=True)
 
@@ -1366,7 +1372,6 @@ class RenamerApp:
             if self.check_psa_input_type.get() == "textbox" and is_file_path and os.path.exists(sku_input_data):
                 try:
                     os.remove(sku_input_data)
-                    self.log_print(f"Cleaned up temporary file: {sku_input_data}\n")
                 except Exception as e:
                     self.log_print(f"Warning: Could not remove temporary file {sku_input_data}: {e}\n", is_stderr=True)
 
@@ -1415,6 +1420,13 @@ class RenamerApp:
         if self.download_psa_500.get(): selected_image_types.append("500")
         if self.download_psa_dimension.get(): selected_image_types.append("dimension")
         if self.download_psa_swatch.get(): selected_image_types.append("swatch")
+        # NEW: Append new image types if selected
+        if self.download_psa_5000.get(): selected_image_types.append("5000")
+        if self.download_psa_5100.get(): selected_image_types.append("5100")
+        if self.download_psa_5200.get(): selected_image_types.append("5200")
+        if self.download_psa_5300.get(): selected_image_types.append("5300")
+        if self.download_psa_squareThumbnail.get(): selected_image_types.append("squareThumbnail")
+
 
         image_types_arg = ",".join(selected_image_types)
 
@@ -1442,7 +1454,6 @@ class RenamerApp:
             if self.download_psa_input_type.get() == "textbox" and is_file_path and os.path.exists(sku_input_data):
                 try:
                     os.remove(sku_input_data)
-                    self.log_print(f"Cleaned up temporary file: {sku_input_data}\n")
                 except Exception as e:
                     self.log_print(f"Warning: Could not remove temporary file {sku_input_data}: {e}\n", is_stderr=True)
 
@@ -1453,7 +1464,6 @@ class RenamerApp:
             if self.download_psa_input_type.get() == "textbox" and is_file_path and os.path.exists(sku_input_data):
                 try:
                     os.remove(sku_input_data)
-                    self.log_print(f"Cleaned up temporary file: {sku_input_data}\n")
                 except Exception as e:
                     self.log_print(f"Warning: Could not remove temporary file {sku_input_data}: {e}\n", is_stderr=True)
 
@@ -1521,7 +1531,6 @@ class RenamerApp:
             if self.get_measurements_input_type.get() == "textbox" and is_file_path and os.path.exists(sku_input_data):
                 try:
                     os.remove(sku_input_data)
-                    self.log_print(f"Cleaned up temporary file: {sku_input_data}\n")
                 except Exception as e:
                     self.log_print(f"Warning: Could not remove temporary file {sku_input_data}: {e}\n", is_stderr=True)
 
@@ -1532,7 +1541,6 @@ class RenamerApp:
             if self.get_measurements_input_type.get() == "textbox" and is_file_path and os.path.exists(sku_input_data):
                 try:
                     os.remove(sku_input_data)
-                    self.log_print(f"Cleaned up temporary file: {sku_input_data}\n")
                 except Exception as e:
                     self.log_print(f"Warning: Could not remove temporary file {sku_input_data}: {e}\n", is_stderr=True)
 
@@ -1659,7 +1667,6 @@ class RenamerApp:
             if self.move_files_input_type.get() == "textbox" and is_file_path and os.path.exists(file_input_data):
                 try:
                     os.remove(file_input_data)
-                    self.log_print(f"Cleaned up temporary file: {file_input_data}\n")
                 except Exception as e:
                     self.log_print(f"Warning: Could not remove temporary file {file_input_data}: {e}\n", is_stderr=True)
         
@@ -1670,7 +1677,6 @@ class RenamerApp:
             if self.move_files_input_type.get() == "textbox" and is_file_path and os.path.exists(file_input_data):
                 try:
                     os.remove(file_input_data)
-                    self.log_print(f"Cleaned up temporary file: {file_input_data}\n")
                 except Exception as e:
                     self.log_print(f"Warning: Could not remove temporary file {file_input_data}: {e}\n", is_stderr=True)
 
@@ -1747,7 +1753,7 @@ class RenamerApp:
         self.theme_label.pack(side="left", padx=(0, 5))
         
         self.theme_selector = ttk.Combobox(theme_frame, textvariable=self.current_theme,  
-                                            values=["Light", "Dark"], state="readonly", width=6)
+                                           values=["Light", "Dark"], state="readonly", width=6)
         self.theme_selector.pack(side="left")
         self.theme_selector.bind("<<ComboboxSelected>>", self._on_theme_change)
         
@@ -2208,8 +2214,8 @@ class RenamerApp:
         self.check_psa_textbox_frame = ttk.Frame(check_psas_frame, style='TFrame')
         ttk.Label(self.check_psa_textbox_frame, text="Paste SKUs (one per line):", style='TLabel').pack(padx=5, pady=5, anchor="w")
         self.check_psa_text_widget = scrolledtext.ScrolledText(self.check_psa_textbox_frame, width=60, height=8, font=self.base_font,
-                                                              bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
-                                                              insertbackground=self.text_color, relief="solid", borderwidth=1)
+                                                               bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
+                                                               insertbackground=self.text_color, relief="solid", borderwidth=1)
         self.check_psa_text_widget.pack(padx=5, pady=(0, 5), fill="both", expand=True)
 
         # --- Check Bynder PSAs: button and progress bar layout ---
@@ -2268,8 +2274,8 @@ class RenamerApp:
         self.download_psa_textbox_frame = ttk.Frame(download_psas_frame, style='TFrame')
         ttk.Label(self.download_psa_textbox_frame, text="Paste SKUs (one per line):", style='TLabel').pack(padx=5, pady=5, anchor="w")
         self.download_psa_text_widget = scrolledtext.ScrolledText(self.download_psa_textbox_frame, width=60, height=8, font=self.base_font,
-                                                                bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
-                                                                insertbackground=self.text_color, relief="solid", borderwidth=1)
+                                                                  bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
+                                                                  insertbackground=self.text_color, relief="solid", borderwidth=1)
         self.download_psa_text_widget.pack(padx=5, pady=(0, 5), fill="both", expand=True)
 
         self.download_psa_spreadsheet_frame.grid(row=1, column=0, columnspan=3, sticky="ew")
@@ -2292,6 +2298,12 @@ class RenamerApp:
         ttk.Checkbutton(image_types_frame, text="500", variable=self.download_psa_500).grid(row=1, column=1, sticky="w", padx=2)
         ttk.Checkbutton(image_types_frame, text="dimension", variable=self.download_psa_dimension).grid(row=1, column=2, sticky="w", padx=2)
         ttk.Checkbutton(image_types_frame, text="swatch", variable=self.download_psa_swatch).grid(row=1, column=3, sticky="w", padx=2)
+        # NEW: Add the new checkboxes to the grid
+        ttk.Checkbutton(image_types_frame, text="5000", variable=self.download_psa_5000).grid(row=2, column=0, sticky="w", padx=2)
+        ttk.Checkbutton(image_types_frame, text="5100", variable=self.download_psa_5100).grid(row=2, column=1, sticky="w", padx=2)
+        ttk.Checkbutton(image_types_frame, text="5200", variable=self.download_psa_5200).grid(row=2, column=2, sticky="w", padx=2)
+        ttk.Checkbutton(image_types_frame, text="5300", variable=self.download_psa_5300).grid(row=2, column=3, sticky="w", padx=2)
+        ttk.Checkbutton(image_types_frame, text="squareThumbnail", variable=self.download_psa_squareThumbnail).grid(row=3, column=0, sticky="w", padx=2)
         
         # --- MODIFIED Section: Download PSAs button and progress bar layout ---
         self.download_psas_run_control_frame = ttk.Frame(download_psas_frame, style='TFrame')
@@ -2360,8 +2372,8 @@ class RenamerApp:
         self.get_measurements_textbox_frame.grid(row=1, column=0, columnspan=3, sticky="nsew")
         ttk.Label(self.get_measurements_textbox_frame, text="Paste SKUs (one per line):", style='TLabel').pack(padx=5, pady=5, anchor="w")
         self.get_measurements_text_widget = scrolledtext.ScrolledText(self.get_measurements_textbox_frame, width=60, height=8, font=self.base_font,
-                                                                    bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
-                                                                    insertbackground=self.text_color, relief="solid", borderwidth=1)
+                                                                      bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
+                                                                      insertbackground=self.text_color, relief="solid", borderwidth=1)
         self.get_measurements_text_widget.pack(padx=5, pady=(0, 5), fill="both", expand=True)
 
         # --- MODIFIED Section: Get Measurements button and progress bar layout ---
@@ -2441,8 +2453,8 @@ class RenamerApp:
         self.move_files_textbox_frame.grid(row=3, column=0, columnspan=3, sticky="nsew")
         ttk.Label(self.move_files_textbox_frame, text="Paste Filenames (one per line):", style='TLabel').pack(padx=5, pady=5, anchor="w")
         self.move_files_text_widget = scrolledtext.ScrolledText(self.move_files_textbox_frame, width=60, height=8, font=self.base_font,
-                                                                 bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
-                                                                 insertbackground=self.text_color, relief="solid", borderwidth=1)
+                                                                bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
+                                                                insertbackground=self.text_color, relief="solid", borderwidth=1)
         self.move_files_text_widget.pack(padx=5, pady=(0, 5), fill="both", expand=True)
 
         # Initially show the spreadsheet frame and hide the textbox frame

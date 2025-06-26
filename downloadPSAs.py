@@ -146,8 +146,13 @@ def main():
     print_progress("PROGRESS: 20.0")
 
     # --- Image types determination logic ---
-    image_types_options = ["grid", "100", "200", "300", "400", "500", "dimension", "swatch"]
+    # Nicole updated 2025-06-25: Added 5000, 5100, 5200, 5300, and squareThumbnail as options START
+    image_types_options = [
+        "grid", "100", "200", "300", "400", "500", "dimension", "swatch",
+        "5000", "5100", "5200", "5300", "squarethumbnail" # Corrected case here
+    ]
     image_types_flags = {k: False for k in image_types_options}
+    # Nicole updated 2025-06-25: Added 5000, 5100, 5200, 5300, and squareThumbnail as options END
 
     if args.image_types:
         types_from_arg = [t.strip().lower() for t in args.image_types.split(',') if t.strip()]
@@ -190,11 +195,23 @@ def main():
 
     for i, sku in enumerate(skus_to_process):
         row = {"SKU": sku}
+        #Nicole updated 2025-06-26: Added special handling for the new squareThumbnail image type option START
         for img_type in image_types_options:
             column_name = f"SKU_{img_type}_Status"
             if image_types_flags[img_type]:
-                image_url = f"{base_url}{sku}_{img_type}/"
-                output_path = os.path.join(output_folder, f"{sku}_{img_type}.jpg")
+                # CHANGE THIS LINE:
+                if img_type == "squarethumbnail": # <--- Changed to lowercase 't'
+                    # special URL with transform params
+                    image_url = (
+                        f"{base_url}{sku}_grid/"
+                        "?io=transform:extend,height:400,width:400,background:FFFFFF"
+                        "&format=jpg&quality=65"
+                    )
+                else:
+                    image_url = f"{base_url}{sku}_{img_type}/"
+                
+                output_filename = f"{sku}_{img_type}.jpg"
+                output_path = os.path.join(output_folder, output_filename)
                 status = download_image(image_url, output_path)
                 row[column_name] = status
                 if status == "Downloaded":
@@ -205,6 +222,8 @@ def main():
                     error_count += 1
             else:
                 row[column_name] = "Not Requested"
+        #Nicole updated 2025-06-26: Added special handling for the new squareThumbnail image type option END
+
         report_rows.append(row)
         
         progress_percentage = (i + 1) / total_skus * 100

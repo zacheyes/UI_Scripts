@@ -382,6 +382,15 @@ class RenamerApp:
         self.download_psa_5300 = tk.BooleanVar(value=False)
         self.download_psa_squareThumbnail = tk.BooleanVar(value=False)
 
+        # List of all BooleanVar objects for "Download PSAs"
+        self.download_psa_checkboxes = [
+            self.download_psa_grid, self.download_psa_100, self.download_psa_200,
+            self.download_psa_300, self.download_psa_400, self.download_psa_500,
+            self.download_psa_dimension, self.download_psa_swatch, self.download_psa_5000,
+            self.download_psa_5100, self.download_psa_5200, self.download_psa_5300,
+            self.download_psa_squareThumbnail
+        ]
+
 
         self.log_expanded = False
 
@@ -541,8 +550,8 @@ class RenamerApp:
                              relief='flat',
                              padding=5)
         self.style.map('TButton',
-                        background=[('active', self._shade_color(self.accent_color, -0.1))],  
-                        foreground=[('active', self.RF_WHITE_BASE)])  
+                         background=[('active', self._shade_color(self.accent_color, -0.1))],  
+                         foreground=[('active', self.RF_WHITE_BASE)])  
 
         self.style.configure('TEntry',
                              fieldbackground=self.secondary_bg,
@@ -556,7 +565,7 @@ class RenamerApp:
                              bordercolor=self.trough_color,
                              arrowcolor=self.text_color)
         self.style.map('TScrollbar',
-                        background=[('active', self._shade_color(self.slider_color, -0.1))])
+                         background=[('active', self._shade_color(self.slider_color, -0.1))])
 
         self.style.configure('TNotebook',
                              background=self.primary_bg,
@@ -567,9 +576,9 @@ class RenamerApp:
                              font=self.base_font,
                              padding=[5, 2])
         self.style.map('TNotebook.Tab',
-                        background=[('selected', self.accent_color)],
-                        foreground=[('selected', self.RF_WHITE_BASE)],  
-                        expand=[('selected', [1, 1, 1, 0])])  
+                         background=[('selected', self.accent_color)],
+                         foreground=[('selected', self.RF_WHITE_BASE)],  
+                         expand=[('selected', [1, 1, 1, 0])])  
 
         self.style.configure('TRadiobutton',
                              background=self.primary_bg,
@@ -577,9 +586,9 @@ class RenamerApp:
                              font=self.base_font,
                              indicatorcolor=self.accent_color)
         self.style.map('TRadiobutton',
-                        background=[('active', self.radiobutton_hover_bg)],
-                        foreground=[('active', self.text_color)],
-                        indicatorcolor=[('selected', self.accent_color), ('!selected', self.checkbox_indicator_off)])
+                         background=[('active', self.radiobutton_hover_bg)],
+                         foreground=[('active', self.text_color)],
+                         indicatorcolor=[('selected', self.accent_color), ('!selected', self.checkbox_indicator_off)])
         
         self.style.configure('TCheckbutton',
                              background=self.primary_bg,
@@ -587,9 +596,9 @@ class RenamerApp:
                              font=self.base_font,
                              indicatorcolor=self.checkbox_indicator_off)
         self.style.map('TCheckbutton',
-                        background=[('active', self.checkbox_hover_bg)],
-                        foreground=[('active', self.text_color)],
-                        indicatorcolor=[('selected', self.checkbox_indicator_on), ('!selected', self.checkbox_indicator_off)])
+                         background=[('active', self.checkbox_hover_bg)],
+                         foreground=[('active', self.text_color)],
+                         indicatorcolor=[('selected', self.checkbox_indicator_on), ('!selected', self.checkbox_indicator_off)])
 
         self.style.configure('TSeparator', background=self.border_color, relief='solid', sashrelief='solid', sashwidth=3)
         self.style.layout('TSeparator',
@@ -601,11 +610,11 @@ class RenamerApp:
                              foreground=self.text_color,
                              arrowcolor=self.text_color)
         self.style.map('TCombobox',
-                        fieldbackground=[('readonly', self.secondary_bg)],
-                        background=[('readonly', self.primary_bg)],
-                        foreground=[('readonly', self.text_color)],
-                        selectbackground=[('readonly', self._shade_color(self.secondary_bg, -0.05))],  
-                        selectforeground=[('readonly', self.text_color)])  
+                         fieldbackground=[('readonly', self.secondary_bg)],
+                         background=[('readonly', self.primary_bg)],
+                         foreground=[('readonly', self.text_color)],
+                         selectbackground=[('readonly', self._shade_color(self.secondary_bg, -0.05))],  
+                         selectforeground=[('readonly', self.text_color)])  
 
         if hasattr(self, 'log_text'):
             self.log_text.config(bg=self.log_bg, fg=self.log_text_color,
@@ -1404,6 +1413,15 @@ class RenamerApp:
                                        download_success_callback, download_error_callback,
                                        initial_progress_text="Downloading...")
 
+    def _select_all_psas(self):
+        """Sets all Download PSA checkboxes to True."""
+        for var in self.download_psa_checkboxes:
+            var.set(True)
+
+    def _clear_all_psas(self):
+        """Sets all Download PSA checkboxes to False."""
+        for var in self.download_psa_checkboxes:
+            var.set(False)
 
     def _run_get_measurements_script(self):
         scripts_folder = self.scripts_root_folder.get()
@@ -1728,7 +1746,7 @@ class RenamerApp:
         self.theme_label.pack(side="left", padx=(0, 5))
         
         self.theme_selector = ttk.Combobox(theme_frame, textvariable=self.current_theme,  
-                                            values=["Light", "Dark"], state="readonly", width=6)
+                                         values=["Light", "Dark"], state="readonly", width=6)
         self.theme_selector.pack(side="left")
         self.theme_selector.bind("<<ComboboxSelected>>", self._on_theme_change)
         
@@ -2222,8 +2240,8 @@ class RenamerApp:
         self.download_psa_textbox_frame = ttk.Frame(download_psas_frame, style='TFrame')
         ttk.Label(self.download_psa_textbox_frame, text="Paste SKUs (one per line):", style='TLabel').pack(padx=5, pady=5, anchor="w")
         self.download_psa_text_widget = scrolledtext.ScrolledText(self.download_psa_textbox_frame, width=60, height=8, font=self.base_font,
-                                                                  bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
-                                                                  insertbackground=self.text_color, relief="solid", borderwidth=1)
+                                                                bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
+                                                                insertbackground=self.text_color, relief="solid", borderwidth=1)
         self.download_psa_text_widget.pack(padx=5, pady=(0, 5), fill="both", expand=True)
 
         self.download_psa_spreadsheet_frame.grid(row=1, column=0, columnspan=3, sticky="ew")
@@ -2235,8 +2253,13 @@ class RenamerApp:
         ttk.Button(download_psas_frame, text="Browse", command=lambda: self._browse_folder(self.download_psa_output_folder), style='TButton').grid(row=2, column=2, padx=5, pady=5)
 
         ttk.Label(download_psas_frame, text="Select Image Types:", style='TLabel').grid(row=3, column=0, padx=5, pady=5, sticky="w")
-        image_types_frame = ttk.Frame(download_psas_frame, style='TFrame')
-        image_types_frame.grid(row=3, column=1, columnspan=2, sticky="w", padx=5, pady=5)
+        
+        # Frame for checkboxes and new buttons
+        image_types_controls_frame = ttk.Frame(download_psas_frame, style='TFrame')
+        image_types_controls_frame.grid(row=3, column=1, columnspan=2, sticky="w", padx=5, pady=5)
+
+        image_types_frame = ttk.Frame(image_types_controls_frame, style='TFrame')
+        image_types_frame.pack(side="top", fill="x", expand=True)
 
         ttk.Checkbutton(image_types_frame, text="grid", variable=self.download_psa_grid).grid(row=0, column=0, sticky="w", padx=2)
         ttk.Checkbutton(image_types_frame, text="100", variable=self.download_psa_100).grid(row=0, column=1, sticky="w", padx=2)
@@ -2252,6 +2275,13 @@ class RenamerApp:
         ttk.Checkbutton(image_types_frame, text="5300", variable=self.download_psa_5300).grid(row=2, column=3, sticky="w", padx=2)
         ttk.Checkbutton(image_types_frame, text="squareThumbnail", variable=self.download_psa_squareThumbnail).grid(row=3, column=0, sticky="w", padx=2)
         
+        # New Select All and Clear All buttons
+        selection_buttons_frame = ttk.Frame(image_types_controls_frame, style='TFrame')
+        selection_buttons_frame.pack(side="bottom", fill="x", pady=(5,0))
+        ttk.Button(selection_buttons_frame, text="Select All", command=self._select_all_psas, style='TButton', width=10).pack(side="left", padx=2)
+        ttk.Button(selection_buttons_frame, text="Clear All", command=self._clear_all_psas, style='TButton', width=10).pack(side="left", padx=2)
+
+
         self.download_psas_run_control_frame = ttk.Frame(download_psas_frame, style='TFrame')
         self.download_psas_run_control_frame.grid(row=4, column=0, columnspan=3, pady=10, sticky="ew")
         
@@ -2312,8 +2342,8 @@ class RenamerApp:
         self.get_measurements_textbox_frame.grid(row=1, column=0, columnspan=3, sticky="nsew")
         ttk.Label(self.get_measurements_textbox_frame, text="Paste SKUs (one per line):", style='TLabel').pack(padx=5, pady=5, anchor="w")
         self.get_measurements_text_widget = scrolledtext.ScrolledText(self.get_measurements_textbox_frame, width=60, height=8, font=self.base_font,
-                                                                  bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
-                                                                  insertbackground=self.text_color, relief="solid", borderwidth=1)
+                                                                bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
+                                                                insertbackground=self.text_color, relief="solid", borderwidth=1)
         self.get_measurements_text_widget.pack(padx=5, pady=(0, 5), fill="both", expand=True)
 
         self.get_measurements_run_control_frame = ttk.Frame(get_measurements_frame, style='TFrame')
@@ -2448,8 +2478,8 @@ class RenamerApp:
         self.or_boolean_textbox_frame.grid(row=1, column=0, columnspan=3, sticky="nsew")
         ttk.Label(self.or_boolean_textbox_frame, text="Paste SKUs (one per line):", style='TLabel').pack(padx=5, pady=5, anchor="w")
         self.or_boolean_text_widget = scrolledtext.ScrolledText(self.or_boolean_textbox_frame, width=60, height=8, font=self.base_font,
-                                                               bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
-                                                               insertbackground=self.text_color, relief="solid", borderwidth=1)
+                                                                bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
+                                                                insertbackground=self.text_color, relief="solid", borderwidth=1)
         self.or_boolean_text_widget.pack(padx=5, pady=(0, 5), fill="both", expand=True)
 
         self.or_boolean_spreadsheet_frame.grid(row=1, column=0, columnspan=3, sticky="ew")
@@ -2457,8 +2487,8 @@ class RenamerApp:
 
         ttk.Label(or_boolean_frame, text="Results:", style='TLabel').grid(row=2, column=0, padx=5, pady=5, sticky="w")
         self.or_boolean_results_textbox = scrolledtext.ScrolledText(or_boolean_frame, width=60, height=5, font=self.base_font,
-                                                                    bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
-                                                                    insertbackground=self.text_color, relief="solid", borderwidth=1, state='disabled')
+                                                                     bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
+                                                                     insertbackground=self.text_color, relief="solid", borderwidth=1, state='disabled')
         self.or_boolean_results_textbox.grid(row=3, column=0, columnspan=3, padx=5, pady=(0, 5), sticky="nsew")
         or_boolean_frame.grid_rowconfigure(3, weight=1)
 

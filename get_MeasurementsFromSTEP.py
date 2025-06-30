@@ -201,7 +201,7 @@ def main():
         sys.exit(1)
 
     headers = [
-        "SKU", "Name", "Vendor Code", "Path", "Collection", "Color",
+        "SKU", "Name", "Dropped", "Visible on Website", "Restock Date", "Stock Level", "Vendor Code", "Family Code", "Path", "Collection", "Color",
         "Additional Dimensions", "Length", "Width", "Height",
         "Inside Arm to Arm", "Seat Depth", "Seat Height", "Extended Length",
         "Extended Width", "Drawer Length", "Drawer Height", "Arm Height"

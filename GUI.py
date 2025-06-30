@@ -301,7 +301,7 @@ class Tooltip:
         self.tooltip_window.wm_geometry(f"+{self.x}+{self.y}")
 
         label = ttk.Label(self.tooltip_window, text=self.text, background=self.bg_color, relief=tk.SOLID, borderwidth=1,
-                                 font=("Arial", 11), foreground=self.text_color, wraplength=400)
+                                     font=("Arial", 11), foreground=self.text_color, wraplength=400)
         label.pack(padx=5, pady=5)
 
     def hide_tooltip(self, event=None):
@@ -374,6 +374,13 @@ class RenamerApp:
         self.download_psa_300 = tk.BooleanVar(value=False)
         self.download_psa_400 = tk.BooleanVar(value=False)
         self.download_psa_500 = tk.BooleanVar(value=False)
+        self.download_psa_600 = tk.BooleanVar(value=False) # New
+        self.download_psa_700 = tk.BooleanVar(value=False) # New
+        self.download_psa_800 = tk.BooleanVar(value=False) # New
+        self.download_psa_900 = tk.BooleanVar(value=False) # New
+        self.download_psa_1000 = tk.BooleanVar(value=False) # New
+        self.download_psa_1100 = tk.BooleanVar(value=False) # New
+        self.download_psa_1200 = tk.BooleanVar(value=False) # New
         self.download_psa_dimension = tk.BooleanVar(value=False)
         self.download_psa_swatch = tk.BooleanVar(value=False)
         self.download_psa_5000 = tk.BooleanVar(value=False)
@@ -386,6 +393,9 @@ class RenamerApp:
         self.download_psa_checkboxes = [
             self.download_psa_grid, self.download_psa_100, self.download_psa_200,
             self.download_psa_300, self.download_psa_400, self.download_psa_500,
+            self.download_psa_600, self.download_psa_700, self.download_psa_800,
+            self.download_psa_900, self.download_psa_1000, self.download_psa_1100,
+            self.download_psa_1200,
             self.download_psa_dimension, self.download_psa_swatch, self.download_psa_5000,
             self.download_psa_5100, self.download_psa_5200, self.download_psa_5300,
             self.download_psa_squareThumbnail
@@ -550,8 +560,8 @@ class RenamerApp:
                              relief='flat',
                              padding=5)
         self.style.map('TButton',
-                         background=[('active', self._shade_color(self.accent_color, -0.1))],  
-                         foreground=[('active', self.RF_WHITE_BASE)])  
+                       background=[('active', self._shade_color(self.accent_color, -0.1))],  
+                       foreground=[('active', self.RF_WHITE_BASE)])  
 
         self.style.configure('TEntry',
                              fieldbackground=self.secondary_bg,
@@ -565,7 +575,7 @@ class RenamerApp:
                              bordercolor=self.trough_color,
                              arrowcolor=self.text_color)
         self.style.map('TScrollbar',
-                         background=[('active', self._shade_color(self.slider_color, -0.1))])
+                       background=[('active', self._shade_color(self.slider_color, -0.1))])
 
         self.style.configure('TNotebook',
                              background=self.primary_bg,
@@ -576,9 +586,9 @@ class RenamerApp:
                              font=self.base_font,
                              padding=[5, 2])
         self.style.map('TNotebook.Tab',
-                         background=[('selected', self.accent_color)],
-                         foreground=[('selected', self.RF_WHITE_BASE)],  
-                         expand=[('selected', [1, 1, 1, 0])])  
+                       background=[('selected', self.accent_color)],
+                       foreground=[('selected', self.RF_WHITE_BASE)],  
+                       expand=[('selected', [1, 1, 1, 0])])  
 
         self.style.configure('TRadiobutton',
                              background=self.primary_bg,
@@ -586,9 +596,9 @@ class RenamerApp:
                              font=self.base_font,
                              indicatorcolor=self.accent_color)
         self.style.map('TRadiobutton',
-                         background=[('active', self.radiobutton_hover_bg)],
-                         foreground=[('active', self.text_color)],
-                         indicatorcolor=[('selected', self.accent_color), ('!selected', self.checkbox_indicator_off)])
+                       background=[('active', self.radiobutton_hover_bg)],
+                       foreground=[('active', self.text_color)],
+                       indicatorcolor=[('selected', self.accent_color), ('!selected', self.checkbox_indicator_off)])
         
         self.style.configure('TCheckbutton',
                              background=self.primary_bg,
@@ -596,9 +606,9 @@ class RenamerApp:
                              font=self.base_font,
                              indicatorcolor=self.checkbox_indicator_off)
         self.style.map('TCheckbutton',
-                         background=[('active', self.checkbox_hover_bg)],
-                         foreground=[('active', self.text_color)],
-                         indicatorcolor=[('selected', self.checkbox_indicator_on), ('!selected', self.checkbox_indicator_off)])
+                       background=[('active', self.checkbox_hover_bg)],
+                       foreground=[('active', self.text_color)],
+                       indicatorcolor=[('selected', self.checkbox_indicator_on), ('!selected', self.checkbox_indicator_off)])
 
         self.style.configure('TSeparator', background=self.border_color, relief='solid', sashrelief='solid', sashwidth=3)
         self.style.layout('TSeparator',
@@ -610,11 +620,11 @@ class RenamerApp:
                              foreground=self.text_color,
                              arrowcolor=self.text_color)
         self.style.map('TCombobox',
-                         fieldbackground=[('readonly', self.secondary_bg)],
-                         background=[('readonly', self.primary_bg)],
-                         foreground=[('readonly', self.text_color)],
-                         selectbackground=[('readonly', self._shade_color(self.secondary_bg, -0.05))],  
-                         selectforeground=[('readonly', self.text_color)])  
+                       fieldbackground=[('readonly', self.secondary_bg)],
+                       background=[('readonly', self.primary_bg)],
+                       foreground=[('readonly', self.text_color)],
+                       selectbackground=[('readonly', self._shade_color(self.secondary_bg, -0.05))],  
+                       selectforeground=[('readonly', self.text_color)])  
 
         if hasattr(self, 'log_text'):
             self.log_text.config(bg=self.log_bg, fg=self.log_text_color,
@@ -933,9 +943,9 @@ class RenamerApp:
         default_filename = "renaminator.xlsx"
         
         output_path = filedialog.asksaveasfilename(
-             defaultextension=".xlsx",
-             filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
-             initialfile=default_filename
+              defaultextension=".xlsx",
+              filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
+              initialfile=default_filename
         )
 
         if not output_path:
@@ -1219,7 +1229,7 @@ class RenamerApp:
         def bynder_prep_success_callback(output):
             self.run_bynder_prep_button.config(state='normal')
             messagebox.showinfo("Success", "Bynder Metadata Prep script completed successfully!\n"
-                                           "The metadata importer CSV should be in your downloads folder.")
+                                         "The metadata importer CSV should be in your downloads folder.")
         def bynder_prep_error_callback(output):
             self.run_bynder_prep_button.config(state='normal')
             messagebox.showerror("Error", "Bynder Metadata Prep script failed. Please check the log for details.")
@@ -1301,7 +1311,7 @@ class RenamerApp:
         def check_psas_success_callback(output):
             self.run_check_psas_button.config(state='normal')
             messagebox.showinfo("Success", "Check Bynder PSAs script completed successfully!\n"
-                                           "Results should be in your downloads folder.")
+                                         "Results should be in your downloads folder.")
             if self.check_psa_input_type.get() == "textbox" and is_file_path and os.path.exists(sku_input_data):
                 try:
                     os.remove(sku_input_data)
@@ -1359,6 +1369,13 @@ class RenamerApp:
         if self.download_psa_300.get(): selected_image_types.append("300")
         if self.download_psa_400.get(): selected_image_types.append("400")
         if self.download_psa_500.get(): selected_image_types.append("500")
+        if self.download_psa_600.get(): selected_image_types.append("600") # New
+        if self.download_psa_700.get(): selected_image_types.append("700") # New
+        if self.download_psa_800.get(): selected_image_types.append("800") # New
+        if self.download_psa_900.get(): selected_image_types.append("900") # New
+        if self.download_psa_1000.get(): selected_image_types.append("1000") # New
+        if self.download_psa_1100.get(): selected_image_types.append("1100") # New
+        if self.download_psa_1200.get(): selected_image_types.append("1200") # New
         if self.download_psa_dimension.get(): selected_image_types.append("dimension")
         if self.download_psa_swatch.get(): selected_image_types.append("swatch")
         if self.download_psa_5000.get(): selected_image_types.append("5000")
@@ -1388,7 +1405,7 @@ class RenamerApp:
         def download_success_callback(output):
             self.run_download_psas_button.config(state='normal')
             messagebox.showinfo("Success", f"Download PSAs script completed successfully!\n"
-                                           f"Results are in the selected output folder: {output_folder_path}")
+                                         f"Results are in the selected output folder: {output_folder_path}")
             if self.download_psa_input_type.get() == "textbox" and is_file_path and os.path.exists(sku_input_data):
                 try:
                     os.remove(sku_input_data)
@@ -1468,7 +1485,7 @@ class RenamerApp:
         def get_measurements_success_callback(output):
             self.run_get_measurements_button.config(state='normal')
             messagebox.showinfo("Success", f"Get Measurements script completed successfully!\n"
-                                           f"{output_location_message}")
+                                         f"{output_location_message}")
             if self.get_measurements_input_type.get() == "textbox" and is_file_path and os.path.exists(sku_input_data):
                 try:
                     os.remove(sku_input_data)
@@ -1520,7 +1537,7 @@ class RenamerApp:
         def convert_success_callback(output):
             self.run_bynder_metadata_convert_button.config(state='normal')
             messagebox.showinfo("Success", f"Bynder Metadata CSV converted successfully!\n"
-                                           f"The converted Excel file is in your Downloads folder.")
+                                         f"The converted Excel file is in your Downloads folder.")
         def convert_error_callback(output):
             self.run_bynder_metadata_convert_button.config(state='normal')
             messagebox.showerror("Error", "Bynder Metadata conversion failed. Please check the log for details.")
@@ -2261,20 +2278,29 @@ class RenamerApp:
         image_types_frame = ttk.Frame(image_types_controls_frame, style='TFrame')
         image_types_frame.pack(side="top", fill="x", expand=True)
 
-        ttk.Checkbutton(image_types_frame, text="grid", variable=self.download_psa_grid).grid(row=0, column=0, sticky="w", padx=2)
-        ttk.Checkbutton(image_types_frame, text="100", variable=self.download_psa_100).grid(row=0, column=1, sticky="w", padx=2)
-        ttk.Checkbutton(image_types_frame, text="200", variable=self.download_psa_200).grid(row=0, column=2, sticky="w", padx=2)
-        ttk.Checkbutton(image_types_frame, text="300", variable=self.download_psa_300).grid(row=0, column=3, sticky="w", padx=2)
-        ttk.Checkbutton(image_types_frame, text="400", variable=self.download_psa_400).grid(row=1, column=0, sticky="w", padx=2)
-        ttk.Checkbutton(image_types_frame, text="500", variable=self.download_psa_500).grid(row=1, column=1, sticky="w", padx=2)
-        ttk.Checkbutton(image_types_frame, text="dimension", variable=self.download_psa_dimension).grid(row=1, column=2, sticky="w", padx=2)
-        ttk.Checkbutton(image_types_frame, text="swatch", variable=self.download_psa_swatch).grid(row=1, column=3, sticky="w", padx=2)
-        ttk.Checkbutton(image_types_frame, text="5000", variable=self.download_psa_5000).grid(row=2, column=0, sticky="w", padx=2)
-        ttk.Checkbutton(image_types_frame, text="5100", variable=self.download_psa_5100).grid(row=2, column=1, sticky="w", padx=2)
-        ttk.Checkbutton(image_types_frame, text="5200", variable=self.download_psa_5200).grid(row=2, column=2, sticky="w", padx=2)
-        ttk.Checkbutton(image_types_frame, text="5300", variable=self.download_psa_5300).grid(row=2, column=3, sticky="w", padx=2)
-        ttk.Checkbutton(image_types_frame, text="squareThumbnail", variable=self.download_psa_squareThumbnail).grid(row=3, column=0, sticky="w", padx=2)
-        
+        # Prepare a list of image types to display, sorted for numerical order
+        display_order_image_types = [
+            ("grid", self.download_psa_grid),
+            ("100", self.download_psa_100), ("200", self.download_psa_200), ("300", self.download_psa_300),
+            ("400", self.download_psa_400), ("500", self.download_psa_500), ("600", self.download_psa_600),
+            ("700", self.download_psa_700), ("800", self.download_psa_800), ("900", self.download_psa_900),
+            ("1000", self.download_psa_1000), ("1100", self.download_psa_1100), ("1200", self.download_psa_1200),
+            ("5000", self.download_psa_5000), ("5100", self.download_psa_5100), ("5200", self.download_psa_5200),
+            ("5300", self.download_psa_5300),
+            ("dimension", self.download_psa_dimension), ("swatch", self.download_psa_swatch),
+            ("squareThumbnail", self.download_psa_squareThumbnail)
+        ]
+
+        # Sort the display_order_image_types to put numbers in order, then others
+        display_order_image_types.sort(key=lambda x: (x[0].isdigit(), int(x[0]) if x[0].isdigit() else x[0]))
+
+        # Arrange checkboxes in a grid (e.g., 4 columns)
+        max_cols = 4
+        for i, (text, var) in enumerate(display_order_image_types):
+            row = i // max_cols
+            col = i % max_cols
+            ttk.Checkbutton(image_types_frame, text=text, variable=var, style='TCheckbutton').grid(row=row, column=col, sticky="w", padx=2, pady=1)
+
         # New Select All and Clear All buttons
         selection_buttons_frame = ttk.Frame(image_types_controls_frame, style='TFrame')
         selection_buttons_frame.pack(side="bottom", fill="x", pady=(5,0))
@@ -2487,8 +2513,8 @@ class RenamerApp:
 
         ttk.Label(or_boolean_frame, text="Results:", style='TLabel').grid(row=2, column=0, padx=5, pady=5, sticky="w")
         self.or_boolean_results_textbox = scrolledtext.ScrolledText(or_boolean_frame, width=60, height=5, font=self.base_font,
-                                                                     bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
-                                                                     insertbackground=self.text_color, relief="solid", borderwidth=1, state='disabled')
+                                                                    bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
+                                                                    insertbackground=self.text_color, relief="solid", borderwidth=1, state='disabled')
         self.or_boolean_results_textbox.grid(row=3, column=0, columnspan=3, padx=5, pady=(0, 5), sticky="nsew")
         or_boolean_frame.grid_rowconfigure(3, weight=1)
 

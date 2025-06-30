@@ -4,7 +4,7 @@ import requests
 import sys
 import argparse
 from datetime import datetime
-from tkinter import Tk, filedialog, messagebox, TclError # <--- Added TclError here
+from tkinter import Tk, filedialog, messagebox, TclError
 import shutil 
 
 def print_progress(message, is_stderr=False):
@@ -57,7 +57,7 @@ def prompt_for_file_or_folder(is_file=True, title_msg="Select File", file_types=
             path = filedialog.askdirectory(title=title_msg)
         root.destroy() 
         return path
-    except TclError: # <--- Changed from tk.TclError to TclError
+    except TclError:
         print_progress("Warning: Tkinter GUI not available. Cannot prompt for file/folder. Script might require direct arguments.", is_stderr=True)
         return None
     except Exception as e:
@@ -146,13 +146,14 @@ def main():
     print_progress("PROGRESS: 20.0")
 
     # --- Image types determination logic ---
-    # Nicole updated 2025-06-25: Added 5000, 5100, 5200, 5300, and squareThumbnail as options START
     image_types_options = [
-        "grid", "100", "200", "300", "400", "500", "dimension", "swatch",
-        "5000", "5100", "5200", "5300", "squarethumbnail" # Corrected case here
+        "grid", "100", "200", "300", "400", "500", "600", "700", "800", "900", "1000", "1100", "1200",
+        "5000", "5100", "5200", "5300", "dimension", "swatch", "squarethumbnail"
     ]
+    # Sort the list to ensure numerical options are in order
+    image_types_options.sort(key=lambda x: (x.isdigit(), x))
+
     image_types_flags = {k: False for k in image_types_options}
-    # Nicole updated 2025-06-25: Added 5000, 5100, 5200, 5300, and squareThumbnail as options END
 
     if args.image_types:
         types_from_arg = [t.strip().lower() for t in args.image_types.split(',') if t.strip()]
@@ -195,12 +196,10 @@ def main():
 
     for i, sku in enumerate(skus_to_process):
         row = {"SKU": sku}
-        #Nicole updated 2025-06-26: Added special handling for the new squareThumbnail image type option START
         for img_type in image_types_options:
             column_name = f"SKU_{img_type}_Status"
             if image_types_flags[img_type]:
-                # CHANGE THIS LINE:
-                if img_type == "squarethumbnail": # <--- Changed to lowercase 't'
+                if img_type == "squarethumbnail":
                     # special URL with transform params
                     image_url = (
                         f"{base_url}{sku}_grid/"
@@ -222,7 +221,6 @@ def main():
                     error_count += 1
             else:
                 row[column_name] = "Not Requested"
-        #Nicole updated 2025-06-26: Added special handling for the new squareThumbnail image type option END
 
         report_rows.append(row)
         

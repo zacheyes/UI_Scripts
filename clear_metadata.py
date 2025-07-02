@@ -37,13 +37,13 @@ def get_exiftool_executable_path():
     script_dir = os.path.dirname(os.path.abspath(__file__))
 
     # Check for Windows executable (exiftool.exe)
-    portable_windows_path = os.path.join(script_dir, 'tools', 'exiftool', 'exiftool.exe')
+    portable_windows_path = os.path.join(script_dir, 'tools', 'exiftool_PC', 'exiftool.exe')
     if os.path.exists(portable_windows_path) and os.path.isfile(portable_windows_path):
         return portable_windows_path
     
     # Check for Linux/macOS executable (plain 'exiftool' binary/script)
     # This covers both the Perl script and potential native binaries if you bundled one
-    portable_unix_path = os.path.join(script_dir, 'tools', 'exiftool', 'exiftool')
+    portable_unix_path = os.path.join(script_dir, 'tools', 'exiftool_MAC', 'exiftool')
     if os.path.exists(portable_unix_path) and os.path.isfile(portable_unix_path):
         return portable_unix_path
 

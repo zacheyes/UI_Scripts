@@ -12,6 +12,7 @@ import filecmp
 import threading
 import pandas as pd
 import tempfile
+import zipfile
 
 # --- Configuration ---
 # Define your GitHub repository details
@@ -24,6 +25,26 @@ GITHUB_RAW_BASE_URL = f"https://raw.githubusercontent.com/{GITHUB_USERNAME}/{GIT
 # --- GUI Script specific constants ---
 GUI_SCRIPT_FILENAME = "GUI.py"
 UPDATE_IN_PROGRESS_MARKER = "gui_update_in_progress.tmp"
+
+# NEW: Constants for ExifTool Bundles Download (for PC and Mac)
+# You MUST place these ZIP files at the root of your GitHub repo (main branch)
+# Or provide direct download URLs if hosted elsewhere.
+
+# ExifTool for Windows (usually an .exe, possibly with other minimal files)
+EXIFTOOL_PC_BUNDLE_FILENAME = "exiftool_PC_bundle.zip"
+EXIFTOOL_PC_BUNDLE_URL = GITHUB_RAW_BASE_URL + EXIFTOOL_PC_BUNDLE_FILENAME
+# ADJUST THIS: Name of the root folder *inside* exiftool_PC_bundle.zip when extracted.
+# E.g., if you zipped 'exiftool_PC' folder, this would be 'exiftool_PC/'.
+# If you zipped the *contents* of 'exiftool_PC' directly, this would be ''.
+EXIFTOOL_PC_BUNDLE_INTERNAL_ROOT_DIR = "exiftool_PC/" # <<< EXAMPLE! ADJUST THIS TO MATCH YOUR ZIP'S INTERNAL FOLDER NAME OR ""!
+
+# ExifTool for Mac/Linux (Perl script + lib folder)
+EXIFTOOL_MAC_BUNDLE_FILENAME = "exiftool_MAC_bundle.zip"
+EXIFTOOL_MAC_BUNDLE_URL = GITHUB_RAW_BASE_URL + EXIFTOOL_MAC_BUNDLE_FILENAME
+# ADJUST THIS: Name of the root folder *inside* exiftool_MAC_bundle.zip when extracted.
+# E.g., if you zipped 'exiftool_MAC' folder, this would be 'exiftool_MAC/'.
+# If you zipped the *contents* of 'exiftool_MAC' directly, this would be ''.
+EXIFTOOL_MAC_BUNDLE_INTERNAL_ROOT_DIR = "exiftool_MAC/" # <<< EXAMPLE! ADJUST THIS TO MATCH YOUR ZIP'S INTERNAL FOLDER NAME OR ""!
 
 
 SCRIPT_FILENAMES = {
@@ -44,6 +65,7 @@ SCRIPT_FILENAMES = {
     "Convert Bynder Metadata to XLS": "convertBynderMetadataToXls.py",
     "Move Files from Spreadsheet": "move_filename.py",
     "OR Boolean Search Creator": "or.py",
+    "Clear Metadata Script": "clear_metadata.py",
 }
 
 # NEW: GitHub URLs for Python scripts
@@ -65,6 +87,7 @@ GITHUB_SCRIPT_URLS = {
     "convertBynderMetadataToXls.py": GITHUB_RAW_BASE_URL + "convertBynderMetadataToXls.py",
     "move_filename.py": GITHUB_RAW_BASE_URL + "move_filename.py",
     "or.py": GITHUB_RAW_BASE_URL + "or.py",
+    "clear_metadata.py": GITHUB_RAW_BASE_URL + "clear_metadata.py",
 }
 
 RENAMER_EXCEL_URL = "https://www.bynder.raymourflanigan.com/m/333617bb041ff764/original/renaminator.xlsx"
@@ -101,12 +124,14 @@ def _update_progress_ui(progress_bar, progress_label, value):
 def _on_process_complete_with_progress_ui(success, full_output, progress_bar, progress_label, run_button_wrapper, progress_wrapper, success_callback, error_callback, log_output_widget):
     if progress_bar:
         progress_bar.stop()
-        progress_bar['value'] = 0
     if progress_label:
         progress_label.config(text="")
     
-    progress_wrapper.grid_remove()
-    run_button_wrapper.grid(row=0, column=1)
+    # Hide progress, show run button (assuming they are in column 1 of their respective parents)
+    if progress_wrapper:
+        progress_wrapper.grid_remove()
+    if run_button_wrapper:
+        run_button_wrapper.grid(row=0, column=1) # Restore to original position
 
     if progress_bar and progress_bar.winfo_toplevel():
         progress_bar.winfo_toplevel().config(cursor="")
@@ -115,13 +140,18 @@ def _on_process_complete_with_progress_ui(success, full_output, progress_bar, pr
 
     if success:
         log_output_widget.insert(tk.END, "\nScript completed successfully.\n", 'success')
+    else:
+        log_output_widget.insert(tk.END, "\nScript failed. Please check the log above for errors.\n", 'error')
+    log_output_widget.see(tk.END)
+    
+    # Call callbacks only after UI is reset
+    if success:
         if success_callback:
             success_callback(full_output)
     else:
-        log_output_widget.insert(tk.END, "\nScript failed. Please check the log above for errors.\n", 'error')
         if error_callback:
             error_callback(full_output)
-    log_output_widget.see(tk.END)
+
 
 # --- Run Script functions based on progress display needs ---
 
@@ -156,6 +186,7 @@ def _run_script_with_progress(script_full_path, args, log_output_widget, progres
                         try:
                             percent_str = line.split("PROGRESS:")[1].strip()
                             percent_val = float(percent_str)
+                            # Ensure after call is on the main thread for UI updates
                             progress_bar.after(0, lambda pb=progress_bar, pl=progress_label, val=percent_val: _update_progress_ui(pb, pl, val))
                         except ValueError:
                             print(f"DEBUG (UI): Could not parse progress: {line.strip()}", file=sys.stderr)
@@ -173,6 +204,7 @@ def _run_script_with_progress(script_full_path, args, log_output_widget, progres
             process.wait()
             success = (process.returncode == 0)
             full_output = "".join(stdout_buffer) + "".join(stderr_buffer)
+            # Ensure after call is on the main thread for UI updates
             log_output_widget.after(0, lambda: _on_process_complete_with_progress_ui(success, full_output, progress_bar, progress_label, run_button_wrapper, progress_wrapper, success_callback, error_callback, log_output_widget))
 
         except FileNotFoundError:
@@ -216,15 +248,13 @@ def _run_script_no_progress(script_full_path, args, log_output_widget, success_c
             _append_to_log(log_output_widget, "\n--- Script Errors (stderr) ---\n" + stderr_str, is_stderr=True)
         _append_to_log(log_output_widget, f"\nScript exited with return code: {result.returncode}\n")
 
-        success = (result.returncode == 0)
-        
         log_output_widget.winfo_toplevel().config(cursor="")
-        if success:
+        if result.returncode == 0:
             if success_callback: success_callback(full_output)
+            return True, full_output
         else:
             if error_callback: error_callback(full_output)
-        
-        return success, full_output
+            return False, full_output
 
     except FileNotFoundError:
         error_msg = f"  Error: Python interpreter (or script) not found. Check paths and ensure Python is correctly installed and accessible.\n"
@@ -267,7 +297,13 @@ def run_script_wrapper(script_full_path, is_python_script, args=None, log_output
     else:
         _append_to_log(log_output_widget, f"Opening file: {script_full_path}\n")
         try:
-            os.startfile(script_full_path)
+            # os.startfile is Windows-specific. Use subprocess.Popen for cross-platform
+            if sys.platform == "win32":
+                os.startfile(script_full_path)
+            elif sys.platform == "darwin": # macOS
+                subprocess.Popen(["open", script_full_path])
+            else: # Linux and other Unix-like
+                subprocess.Popen(["xdg-open", script_full_path])
             _append_to_log(log_output_widget, f"  File opened.\n")
             return True, f"Opened file: {script_full_path}"
         except Exception as e:
@@ -401,6 +437,22 @@ class RenamerApp:
             self.download_psa_squareThumbnail
         ]
 
+        # NEW: Variables for Clear Metadata section
+        self.clear_metadata_input_folder = tk.StringVar(value="")
+        # Map of metadata property names to their BooleanVar for checkboxes
+        # These names must EXACTLY match the keys in METADATA_PROPERTIES in clear_metadata.py
+        self.clear_metadata_checkbox_vars = {
+            "Description": tk.BooleanVar(value=False),
+            "ImageDescription": tk.BooleanVar(value=False),
+            "Caption-Abstract": tk.BooleanVar(value=False),
+            "Keywords": tk.BooleanVar(value=False),
+            "Subject": tk.BooleanVar(value=False),
+            "Title": tk.BooleanVar(value=False),
+            "Headline": tk.BooleanVar(value=False),
+            "ObjectName": tk.BooleanVar(value=False),
+            "Event": tk.BooleanVar(value=False),
+        }
+
 
         self.log_expanded = False
 
@@ -442,6 +494,56 @@ class RenamerApp:
             "scripts_root_folder": self.scripts_root_folder.get(),
             "last_update": self.last_update_timestamp.get(),
             "gui_last_update": self.gui_last_update_timestamp.get(),
+            # Removed saving clear_metadata_settings and clear_metadata_input_folder here
+            # to ensure they reset on relaunch.
+            "check_psa_sku_spreadsheet_path": self.check_psa_sku_spreadsheet_path.get(),
+            "download_psa_sku_spreadsheet_path": self.download_psa_sku_spreadsheet_path.get(),
+            "get_measurements_sku_spreadsheet_path": self.get_measurements_sku_spreadsheet_path.get(),
+            "bynder_metadata_csv_path": self.bynder_metadata_csv_path.get(),
+            "move_files_source_folder": self.move_files_source_folder.get(),
+            "move_files_destination_folder": self.move_files_destination_folder.get(),
+            "move_files_excel_path": self.move_files_excel_path.get(),
+            "or_boolean_input_type": self.or_boolean_input_type.get(),
+            "or_boolean_spreadsheet_path": self.or_boolean_spreadsheet_path.get(),
+            "source_type": self.source_type.get(),
+            "master_matrix_path": self.master_matrix_path.get(),
+            "rename_input_folder": self.rename_input_folder.get(),
+            "vendor_code": self.vendor_code.get(),
+            "inline_source_folder": self.inline_source_folder.get(),
+            "inline_matrix_path": self.inline_matrix_path.get(),
+            "inline_output_folder": self.inline_output_folder.get(),
+            "pso1_matrix_path": self.pso1_matrix_path.get(),
+            "pso1_output_folder": self.pso1_output_folder.get(),
+            "pso2_network_folder": self.pso2_network_folder.get(),
+            "pso2_matrix_path": self.pso2_matrix_path.get(),
+            "pso2_output_folder": self.pso2_output_folder.get(),
+            "prep_input_path": self.prep_input_path.get(),
+            "bynder_assets_folder": self.bynder_assets_folder.get(),
+            "download_psa_output_folder": self.download_psa_output_folder.get(),
+            "download_psa_grid": self.download_psa_grid.get(),
+            "download_psa_100": self.download_psa_100.get(),
+            "download_psa_200": self.download_psa_200.get(),
+            "download_psa_300": self.download_psa_300.get(),
+            "download_psa_400": self.download_psa_400.get(),
+            "download_psa_500": self.download_psa_500.get(),
+            "download_psa_600": self.download_psa_600.get(),
+            "download_psa_700": self.download_psa_700.get(),
+            "download_psa_800": self.download_psa_800.get(),
+            "download_psa_900": self.download_psa_900.get(),
+            "download_psa_1000": self.download_psa_1000.get(),
+            "download_psa_1100": self.download_psa_1100.get(),
+            "download_psa_1200": self.download_psa_1200.get(),
+            "download_psa_dimension": self.download_psa_dimension.get(),
+            "download_psa_swatch": self.download_psa_swatch.get(),
+            "download_psa_5000": self.download_psa_5000.get(),
+            "download_psa_5100": self.download_psa_5100.get(),
+            "download_psa_5200": self.download_psa_5200.get(),
+            "download_psa_5300": self.download_psa_5300.get(),
+            "download_psa_squareThumbnail": self.download_psa_squareThumbnail.get(),
+            "check_psa_input_type": self.check_psa_input_type.get(),
+            "download_psa_input_type": self.download_psa_input_type.get(),
+            "get_measurements_input_type": self.get_measurements_input_type.get(),
+            "move_files_input_type": self.move_files_input_type.get(),
         }
         try:
             with open(CONFIG_FILE, 'w') as f:
@@ -473,6 +575,63 @@ class RenamerApp:
                     self.gui_last_update_timestamp.set(f"Last GUI update: {gui_last_update_from_config}")
                 else:
                     self.gui_last_update_timestamp.set(gui_last_update_from_config)
+
+                # --- MODIFIED: Clear Metadata settings are NOT loaded ---
+                # They are explicitly reset below after this load call.
+                # self.clear_metadata_input_folder.set(config_data.get("clear_metadata_input_folder", ""))
+                # loaded_clear_metadata_settings = config_data.get("clear_metadata_settings", {})
+                # for prop, var in self.clear_metadata_checkbox_vars.items():
+                #     var.set(loaded_clear_metadata_settings.get(prop, False))
+
+                # Load other variables (keep loading these)
+                self.check_psa_sku_spreadsheet_path.set(config_data.get("check_psa_sku_spreadsheet_path", ""))
+                self.download_psa_sku_spreadsheet_path.set(config_data.get("download_psa_sku_spreadsheet_path", ""))
+                self.get_measurements_sku_spreadsheet_path.set(config_data.get("get_measurements_sku_spreadsheet_path", ""))
+                self.bynder_metadata_csv_path.set(config_data.get("bynder_metadata_csv_path", ""))
+                self.move_files_source_folder.set(config_data.get("move_files_source_folder", ""))
+                self.move_files_destination_folder.set(config_data.get("move_files_destination_folder", ""))
+                self.move_files_excel_path.set(config_data.get("move_files_excel_path", ""))
+                self.or_boolean_input_type.set(config_data.get("or_boolean_input_type", "spreadsheet"))
+                self.or_boolean_spreadsheet_path.set(config_data.get("or_boolean_spreadsheet_path", ""))
+                self.source_type.set(config_data.get("source_type", "inline"))
+                self.master_matrix_path.set(config_data.get("master_matrix_path", ""))
+                self.rename_input_folder.set(config_data.get("rename_input_folder", ""))
+                self.vendor_code.set(config_data.get("vendor_code", ""))
+                self.inline_source_folder.set(config_data.get("inline_source_folder", ""))
+                self.inline_matrix_path.set(config_data.get("inline_matrix_path", ""))
+                self.inline_output_folder.set(config_data.get("inline_output_folder", ""))
+                self.pso1_matrix_path.set(config_data.get("pso1_matrix_path", ""))
+                self.pso1_output_folder.set(config_data.get("pso1_output_folder", ""))
+                self.pso2_network_folder.set(config_data.get("pso2_network_folder", ""))
+                self.pso2_matrix_path.set(config_data.get("pso2_matrix_path", ""))
+                self.pso2_output_folder.set(config_data.get("pso2_output_folder", ""))
+                self.prep_input_path.set(config_data.get("prep_input_path", ""))
+                self.bynder_assets_folder.set(config_data.get("bynder_assets_folder", ""))
+                self.download_psa_output_folder.set(config_data.get("download_psa_output_folder", ""))
+                self.download_psa_grid.set(config_data.get("download_psa_grid", False))
+                self.download_psa_100.set(config_data.get("download_psa_100", False))
+                self.download_psa_200.set(config_data.get("download_psa_200", False))
+                self.download_psa_300.set(config_data.get("download_psa_300", False))
+                self.download_psa_400.set(config_data.get("download_psa_400", False))
+                self.download_psa_500.set(config_data.get("download_psa_500", False))
+                self.download_psa_600.set(config_data.get("download_psa_600", False))
+                self.download_psa_700.set(config_data.get("download_psa_700", False))
+                self.download_psa_800.set(config_data.get("download_psa_800", False))
+                self.download_psa_900.set(config_data.get("download_psa_900", False))
+                self.download_psa_1000.set(config_data.get("download_psa_1000", False))
+                self.download_psa_1100.set(config_data.get("download_psa_1100", False))
+                self.download_psa_1200.set(config_data.get("download_psa_1200", False))
+                self.download_psa_dimension.set(config_data.get("download_psa_dimension", False))
+                self.download_psa_swatch.set(config_data.get("download_psa_swatch", False))
+                self.download_psa_5000.set(config_data.get("download_psa_5000", False))
+                self.download_psa_5100.set(config_data.get("download_psa_5100", False))
+                self.download_psa_5200.set(config_data.get("download_psa_5200", False))
+                self.download_psa_5300.set(config_data.get("download_psa_5300", False))
+                self.download_psa_squareThumbnail.set(config_data.get("download_psa_squareThumbnail", False))
+                self.check_psa_input_type.set(config_data.get("check_psa_input_type", "spreadsheet"))
+                self.download_psa_input_type.set(config_data.get("download_psa_input_type", "spreadsheet"))
+                self.get_measurements_input_type.set(config_data.get("get_measurements_input_type", "spreadsheet"))
+                self.move_files_input_type.set(config_data.get("move_files_input_type", "spreadsheet"))
 
 
                 self.log_print("Configuration loaded successfully.\n")
@@ -560,8 +719,8 @@ class RenamerApp:
                              relief='flat',
                              padding=5)
         self.style.map('TButton',
-                       background=[('active', self._shade_color(self.accent_color, -0.1))],  
-                       foreground=[('active', self.RF_WHITE_BASE)])  
+                        background=[('active', self._shade_color(self.accent_color, -0.1))],  
+                        foreground=[('active', self.RF_WHITE_BASE)])  
 
         self.style.configure('TEntry',
                              fieldbackground=self.secondary_bg,
@@ -575,7 +734,7 @@ class RenamerApp:
                              bordercolor=self.trough_color,
                              arrowcolor=self.text_color)
         self.style.map('TScrollbar',
-                       background=[('active', self._shade_color(self.slider_color, -0.1))])
+                        background=[('active', self._shade_color(self.slider_color, -0.1))])
 
         self.style.configure('TNotebook',
                              background=self.primary_bg,
@@ -586,9 +745,9 @@ class RenamerApp:
                              font=self.base_font,
                              padding=[5, 2])
         self.style.map('TNotebook.Tab',
-                       background=[('selected', self.accent_color)],
-                       foreground=[('selected', self.RF_WHITE_BASE)],  
-                       expand=[('selected', [1, 1, 1, 0])])  
+                        background=[('selected', self.accent_color)],
+                        foreground=[('selected', self.RF_WHITE_BASE)],  
+                        expand=[('selected', [1, 1, 1, 0])])  
 
         self.style.configure('TRadiobutton',
                              background=self.primary_bg,
@@ -596,9 +755,9 @@ class RenamerApp:
                              font=self.base_font,
                              indicatorcolor=self.accent_color)
         self.style.map('TRadiobutton',
-                       background=[('active', self.radiobutton_hover_bg)],
-                       foreground=[('active', self.text_color)],
-                       indicatorcolor=[('selected', self.accent_color), ('!selected', self.checkbox_indicator_off)])
+                        background=[('active', self.radiobutton_hover_bg)],
+                        foreground=[('active', self.text_color)],
+                        indicatorcolor=[('selected', self.accent_color), ('!selected', self.checkbox_indicator_off)])
         
         self.style.configure('TCheckbutton',
                              background=self.primary_bg,
@@ -606,13 +765,13 @@ class RenamerApp:
                              font=self.base_font,
                              indicatorcolor=self.checkbox_indicator_off)
         self.style.map('TCheckbutton',
-                       background=[('active', self.checkbox_hover_bg)],
-                       foreground=[('active', self.text_color)],
-                       indicatorcolor=[('selected', self.checkbox_indicator_on), ('!selected', self.checkbox_indicator_off)])
+                        background=[('active', self.checkbox_hover_bg)],
+                        foreground=[('active', self.text_color)],
+                        indicatorcolor=[('selected', self.checkbox_indicator_on), ('!selected', self.checkbox_indicator_off)])
 
         self.style.configure('TSeparator', background=self.border_color, relief='solid', sashrelief='solid', sashwidth=3)
         self.style.layout('TSeparator',
-                          [('TSeparator.separator', {'sticky': 'nswe'})])
+                              [('TSeparator.separator', {'sticky': 'nswe'})])
 
         self.style.configure('TCombobox',
                              fieldbackground=self.secondary_bg,  
@@ -620,11 +779,11 @@ class RenamerApp:
                              foreground=self.text_color,
                              arrowcolor=self.text_color)
         self.style.map('TCombobox',
-                       fieldbackground=[('readonly', self.secondary_bg)],
-                       background=[('readonly', self.primary_bg)],
-                       foreground=[('readonly', self.text_color)],
-                       selectbackground=[('readonly', self._shade_color(self.secondary_bg, -0.05))],  
-                       selectforeground=[('readonly', self.text_color)])  
+                        fieldbackground=[('readonly', self.secondary_bg)],
+                        background=[('readonly', self.primary_bg)],
+                        foreground=[('readonly', self.text_color)],
+                        selectbackground=[('readonly', self._shade_color(self.secondary_bg, -0.05))],  
+                        selectforeground=[('readonly', self.text_color)])  
 
         if hasattr(self, 'log_text'):
             self.log_text.config(bg=self.log_bg, fg=self.log_text_color,
@@ -811,6 +970,93 @@ class RenamerApp:
                 os.remove(temp_file_path)
             return "error"
 
+    # NEW: Generic function to download and extract a tool bundle
+    def _download_and_extract_tool_bundle(self, bundle_filename, bundle_url, internal_root_dir, target_sub_folder):
+        scripts_folder = self.scripts_root_folder.get()
+        tool_target_dir = os.path.join(scripts_folder, "tools", target_sub_folder)
+        temp_zip_path = os.path.join(tempfile.gettempdir(), bundle_filename)
+
+        self.log_print(f"\nAttempting to download tool bundle '{bundle_filename}' from: {bundle_url}")
+        self.log_print(f"Target extraction directory: {tool_target_dir}")
+
+        try:
+            # 1. Download the zip file
+            response = requests.get(bundle_url, stream=True)
+            response.raise_for_status()
+
+            with open(temp_zip_path, "wb") as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            self.log_print(f"  Bundle downloaded to temporary location: {temp_zip_path}")
+
+            # 2. Extract the zip file
+            # If the target directory already exists and we're downloading a fresh bundle,
+            # it might be safer to remove existing contents first to avoid old/conflicting files.
+            # But be cautious: ensure user knows this is for *this specific tool folder*.
+            if os.path.exists(tool_target_dir):
+                self.log_print(f"  Clearing existing contents of {tool_target_dir} before extraction...")
+                shutil.rmtree(tool_target_dir) # Remove entire directory
+            os.makedirs(tool_target_dir, exist_ok=True) # Recreate empty directory
+
+            with zipfile.ZipFile(temp_zip_path, 'r') as zip_ref:
+                # Get list of files inside the zip
+                zip_contents = zip_ref.namelist()
+
+                # Determine effective internal root directory for extraction
+                effective_internal_root = internal_root_dir
+                
+                # If internal_root_dir is specified but not found as a prefix, try extracting directly to target
+                if effective_internal_root and not any(member.startswith(effective_internal_root) for member in zip_contents):
+                    self.log_print(f"  Warning: Expected internal root '{internal_root_dir}' not found as prefix in zip. Trying direct extraction.", is_stderr=True)
+                    effective_internal_root = "" # Extract all directly into target_dir
+                
+                for member in zip_contents:
+                    if member.startswith(effective_internal_root):
+                        # Construct the target path, excluding the effective internal root dir from the path
+                        relative_path_in_zip = os.path.relpath(member, effective_internal_root) if effective_internal_root else member
+                        target_path = os.path.join(tool_target_dir, relative_path_in_zip)
+                        
+                        # Ensure parent directory exists for the member
+                        os.makedirs(os.path.dirname(target_path), exist_ok=True)
+                        
+                        # Extract if it's a file, not a directory
+                        if not member.endswith('/'): # Skip directory entries
+                            with open(target_path, 'wb') as outfile:
+                                outfile.write(zip_ref.read(member))
+            
+            self.log_print(f"  Bundle extracted successfully to: {tool_target_dir}")
+
+            # 3. Ensure permissions for executables (important for macOS/Linux)
+            if target_sub_folder == "exiftool_MAC":
+                executable_path = os.path.join(tool_target_dir, "exiftool")
+                if os.path.exists(executable_path):
+                    os.chmod(executable_path, 0o755) # rwxr-xr-x
+                    self.log_print(f"  Set execute permissions for {os.path.basename(executable_path)}")
+            # For Windows (exiftool.exe), the execute permission bit isn't directly controlled by chmod in the same way,
+            # and it should already be executable if extracted correctly. No specific chmod needed.
+            
+            # Clean up the temporary zip file
+            os.remove(temp_zip_path)
+            self.log_print("  Temporary zip file removed.")
+            return "downloaded"
+
+        except requests.exceptions.RequestException as e:
+            self.log_print(f"  ERROR downloading bundle: {e}\n", is_stderr=True)
+            return "error"
+        except zipfile.BadZipFile:
+            self.log_print(f"  ERROR: Downloaded bundle '{bundle_filename}' is a corrupted zip file.\n", is_stderr=True)
+            return "error"
+        except Exception as e:
+            self.log_print(f"  An unexpected ERROR occurred during bundle extraction: {e}\n", is_stderr=True)
+            return "error"
+        finally:
+            if os.path.exists(temp_zip_path):
+                try:
+                    os.remove(temp_zip_path)
+                except Exception as e:
+                    self.log_print(f"Warning: Could not remove temporary zip file: {e}", is_stderr=True)
+
+
     def _update_all_scripts(self):
         scripts_folder = self.scripts_root_folder.get()
         if not scripts_folder or not os.path.isdir(scripts_folder):
@@ -827,6 +1073,8 @@ class RenamerApp:
         error_count = 0
         total_checked = 0
 
+        # Phase 1: Update Python scripts
+        self.log_print("\n--- Phase 1: Updating Python scripts ---")
         for display_name, filename in SCRIPT_FILENAMES.items():
             if filename.endswith(".py") and filename in GITHUB_SCRIPT_URLS:
                 total_checked += 1
@@ -842,28 +1090,72 @@ class RenamerApp:
                     skipped_count += 1
                 elif status == "error":
                     error_count += 1
+        
+        self.log_print("\n--- Phase 1 Complete ---")
+        self.log_print(f"Python scripts: Updated={updated_count}, Downloaded={downloaded_count}, Skipped={skipped_count}, Errors={error_count}\n")
 
-        self.log_print("\n--- Script Update Process Complete ---")
+
+        # Phase 2: Check and download ExifTool bundle based on OS
+        self.log_print("\n--- Phase 2: Checking ExifTool Bundle ---")
+        
+        exiftool_bundle_status = "skipped" # Default status for ExifTool check
+
+        if sys.platform == "win32":
+            target_sub_folder = "exiftool_PC"
+            executable_filename = "exiftool.exe"
+            bundle_url = EXIFTOOL_PC_BUNDLE_URL
+            bundle_filename = EXIFTOOL_PC_BUNDLE_FILENAME
+            bundle_internal_root_dir = EXIFTOOL_PC_BUNDLE_INTERNAL_ROOT_DIR
+        elif sys.platform == "darwin" or sys.platform.startswith("linux"): # macOS or Linux
+            target_sub_folder = "exiftool_MAC"
+            executable_filename = "exiftool"
+            bundle_url = EXIFTOOL_MAC_BUNDLE_URL
+            bundle_filename = EXIFTOOL_MAC_BUNDLE_FILENAME
+            bundle_internal_root_dir = EXIFTOOL_MAC_BUNDLE_INTERNAL_ROOT_DIR
+        else:
+            self.log_print(f"Unsupported operating system: {sys.platform}. Cannot check for ExifTool bundle.", is_stderr=True)
+            error_count += 1
+            exiftool_bundle_status = "error" # Set status and skip
+        
+        # Only proceed with ExifTool check/download if OS is supported
+        if exiftool_bundle_status != "error":
+            exiftool_local_path = os.path.join(scripts_folder, "tools", target_sub_folder, executable_filename)
+            
+            if not os.path.exists(exiftool_local_path):
+                self.log_print(f"ExifTool executable ('{executable_filename}') not found in '{target_sub_folder}' location. Attempting to download bundle...")
+                # Call the generic download and extract function
+                bundle_status = self._download_and_extract_tool_bundle(bundle_filename, bundle_url, bundle_internal_root_dir, target_sub_folder)
+                
+                if bundle_status == "downloaded":
+                    self.log_print("ExifTool bundle successfully downloaded and extracted.", is_stderr=False)
+                    downloaded_count += 1 # Count ExifTool as a download
+                else: # bundle_status is "error"
+                    self.log_print("Failed to download or extract ExifTool bundle. Manual setup may be required.", is_stderr=True)
+                    error_count += 1
+            else:
+                self.log_print(f"ExifTool bundle ('{executable_filename}') already found locally. Skipping download.", is_stderr=False)
+                skipped_count += 1 # Count ExifTool as skipped if already present
+
+
+        self.log_print("\n--- All Update Processes Complete ---")
         
         summary_message_parts = []
         if updated_count > 0:
             summary_message_parts.append(f"Updated {updated_count} script(s).")
         if downloaded_count > 0:
-            summary_message_parts.append(f"Newly downloaded {downloaded_count} script(s).")
+            summary_message_parts.append(f"Newly downloaded {downloaded_count} item(s) (scripts/tools).")
         if skipped_count > 0:
-            summary_message_parts.append(f"{skipped_count} script(s) were already up to date.")
+            summary_message_parts.append(f"{skipped_count} item(s) were already up to date.")
         if error_count > 0:
-            summary_message_parts.append(f"{error_count} script(s) encountered errors.")
+            summary_message_parts.append(f"{error_count} item(s) encountered errors. Check log for details.")
 
         if summary_message_parts:
             summary_message = "\n".join(summary_message_parts)
             current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")  
             self.last_update_timestamp.set(f"Last update: {current_time}")  
-            messagebox.showinfo("Update Complete", f"Script update summary:\n{summary_message}\n\nCheck the Activity Log for full details.")
-        elif total_checked == 0:
-            messagebox.showinfo("Update Complete", "No Python scripts with valid GitHub URLs were found to check for updates.")
+            messagebox.showinfo("Update Complete", f"Update summary:\n{summary_message}\n\nCheck the Activity Log for full details.")
         else:
-            messagebox.showinfo("Update Complete", "No scripts were updated, downloaded, or encountered errors. All checked scripts are already up to date.")
+            messagebox.showinfo("Update Complete", "No updates found, or no items to check. All local items are up to date.")
             
         self._save_configuration()
 
@@ -915,7 +1207,7 @@ class RenamerApp:
                 
                 python = sys.executable
                 os.execl(python, python, *sys.argv)  
-        
+            
         except requests.exceptions.RequestException as e:
             self.log_print(f"Error checking/downloading GUI update: {e}\n", is_stderr=True)
             messagebox.showerror("Update Error", f"Failed to check for GUI update: {e}")
@@ -1229,7 +1521,7 @@ class RenamerApp:
         def bynder_prep_success_callback(output):
             self.run_bynder_prep_button.config(state='normal')
             messagebox.showinfo("Success", "Bynder Metadata Prep script completed successfully!\n"
-                                         "The metadata importer CSV should be in your downloads folder.")
+                                          "The metadata importer CSV should be in your downloads folder.")
         def bynder_prep_error_callback(output):
             self.run_bynder_prep_button.config(state='normal')
             messagebox.showerror("Error", "Bynder Metadata Prep script failed. Please check the log for details.")
@@ -1311,7 +1603,7 @@ class RenamerApp:
         def check_psas_success_callback(output):
             self.run_check_psas_button.config(state='normal')
             messagebox.showinfo("Success", "Check Bynder PSAs script completed successfully!\n"
-                                         "Results should be in your downloads folder.")
+                                          "Results should be in your downloads folder.")
             if self.check_psa_input_type.get() == "textbox" and is_file_path and os.path.exists(sku_input_data):
                 try:
                     os.remove(sku_input_data)
@@ -1405,7 +1697,7 @@ class RenamerApp:
         def download_success_callback(output):
             self.run_download_psas_button.config(state='normal')
             messagebox.showinfo("Success", f"Download PSAs script completed successfully!\n"
-                                         f"Results are in the selected output folder: {output_folder_path}")
+                                          f"Results are in the selected output folder: {output_folder_path}")
             if self.download_psa_input_type.get() == "textbox" and is_file_path and os.path.exists(sku_input_data):
                 try:
                     os.remove(sku_input_data)
@@ -1485,7 +1777,7 @@ class RenamerApp:
         def get_measurements_success_callback(output):
             self.run_get_measurements_button.config(state='normal')
             messagebox.showinfo("Success", f"Get Measurements script completed successfully!\n"
-                                         f"{output_location_message}")
+                                          f"{output_location_message}")
             if self.get_measurements_input_type.get() == "textbox" and is_file_path and os.path.exists(sku_input_data):
                 try:
                     os.remove(sku_input_data)
@@ -1537,7 +1829,7 @@ class RenamerApp:
         def convert_success_callback(output):
             self.run_bynder_metadata_convert_button.config(state='normal')
             messagebox.showinfo("Success", f"Bynder Metadata CSV converted successfully!\n"
-                                         f"The converted Excel file is in your Downloads folder.")
+                                          f"The converted Excel file is in your Downloads folder.")
         def convert_error_callback(output):
             self.run_bynder_metadata_convert_button.config(state='normal')
             messagebox.showerror("Error", "Bynder Metadata conversion failed. Please check the log for details.")
@@ -1705,13 +1997,88 @@ class RenamerApp:
                                        or_boolean_success_callback, or_boolean_error_callback,
                                        initial_progress_text="Creating OR Boolean Search...")
 
+    # NEW: Clear Metadata functions
+    def _run_clear_metadata_script(self):
+        scripts_folder = self.scripts_root_folder.get()
+        clear_metadata_script_name = SCRIPT_FILENAMES["Clear Metadata Script"]
+        clear_metadata_script_path = os.path.join(scripts_folder, clear_metadata_script_name)
+
+        input_folder = self.clear_metadata_input_folder.get()
+
+        if not os.path.exists(clear_metadata_script_path):
+            messagebox.showerror("Error", f"Clear Metadata script not found: {clear_metadata_script_path}\n"
+                                          f"Please ensure '{clear_metadata_script_name}' is in your scripts folder.")
+            return
+        if not input_folder or not os.path.isdir(input_folder):
+            messagebox.showerror("Input Error", "Please select a valid Input Folder for clearing metadata.")
+            return
+        if not os.path.exists(input_folder):
+            messagebox.showerror("Input Error", f"Input folder not found: {input_folder}")
+            return
+
+        selected_properties_to_clear = [
+            prop for prop, var in self.clear_metadata_checkbox_vars.items() if var.get()
+        ]
+
+        if not selected_properties_to_clear:
+            messagebox.showwarning("No Selection", "No metadata properties selected for clearing. Please select at least one.")
+            return
+
+        self.log_print(f"\n--- Running Clear Metadata Script ({clear_metadata_script_name}) ---")
+        self.log_print(f"Input Folder: {input_folder}")
+        self.log_print(f"Properties to Clear: {', '.join(selected_properties_to_clear)}")
+
+        args = ["--input_folder", input_folder]
+        # Pass the selected properties to the script via --clear_properties
+        if selected_properties_to_clear:
+            args.extend(["--clear_properties"])
+            args.extend(selected_properties_to_clear)
+
+        def clear_metadata_success_callback(output):
+            self.run_clear_metadata_button.config(state='normal')
+            messagebox.showinfo("Success", "Clear Metadata script completed successfully!")
+        
+        def clear_metadata_error_callback(output):
+            self.run_clear_metadata_button.config(state='normal')
+            messagebox.showerror("Error", "Clear Metadata script failed. Please check the log for details.")
+
+        self.run_clear_metadata_button.config(state='disabled')
+
+        run_script_wrapper(clear_metadata_script_path, True, args, self.log_text,
+                                       self.clear_metadata_progress_bar, self.clear_metadata_progress_label,
+                                       self.clear_metadata_run_button_wrapper,
+                                       self.clear_metadata_progress_wrapper,
+                                       clear_metadata_success_callback, clear_metadata_error_callback,
+                                       initial_progress_text="Clearing Metadata...")
+
+    def _select_all_clear_metadata(self):
+        """Sets all Clear Metadata checkboxes to True."""
+        for var in self.clear_metadata_checkbox_vars.values():
+            var.set(True)
+
+    def _clear_all_clear_metadata(self):
+        """Sets all Clear Metadata checkboxes to False."""
+        for var in self.clear_metadata_checkbox_vars.values():
+            var.set(False)
+
     def _setup_initial_state(self):
+        """
+        Sets up the initial state of the GUI elements.
+        This is called after loading configuration to ensure correct visibility
+        and also to reset specific fields as needed.
+        """
         self._show_source_section()  
         self._show_input_method("check_psa", self.check_psa_input_type.get())
         self._show_input_method_download_psa(self.download_psa_input_type.get())
         self._show_input_method("get_measurements", self.get_measurements_input_type.get())
         self._show_input_method_move_files(self.move_files_input_type.get())
         self._show_input_method_or_boolean(self.or_boolean_input_type.get())
+        
+        # Reset Clear Metadata section inputs on every startup
+        self.clear_metadata_input_folder.set("")
+        for var in self.clear_metadata_checkbox_vars.values():
+            var.set(False)
+
         if not self.log_expanded:  
             self.log_text.pack_forget()  
             self.toggle_log_button.config(text="▲")  
@@ -1738,7 +2105,7 @@ class RenamerApp:
         
         self.update_all_scripts_button = ttk.Button(update_all_scripts_section, text="Update All Scripts", command=self._update_all_scripts, style='TButton')
         self.update_all_scripts_button.pack(fill="x", expand=True)
-        Tooltip(self.update_all_scripts_button, "Checks GitHub for updated versions of Python scripts and downloads them to your local scripts folder if newer versions are available. If a script is missing, it will download it.", self.secondary_bg, self.text_color)
+        Tooltip(self.update_all_scripts_button, "Checks GitHub for updated versions of Python scripts and downloads them to your local scripts folder if newer versions are available. If a script is missing, it will download it. Also checks for the ExifTool bundle.", self.secondary_bg, self.text_color)
         
         self.last_update_label = ttk.Label(update_all_scripts_section, textvariable=self.last_update_timestamp, style='TLabel')
         self.last_update_label.pack(pady=(2,0))
@@ -2257,12 +2624,12 @@ class RenamerApp:
         self.download_psa_textbox_frame = ttk.Frame(download_psas_frame, style='TFrame')
         ttk.Label(self.download_psa_textbox_frame, text="Paste SKUs (one per line):", style='TLabel').pack(padx=5, pady=5, anchor="w")
         self.download_psa_text_widget = scrolledtext.ScrolledText(self.download_psa_textbox_frame, width=60, height=8, font=self.base_font,
-                                                                bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
-                                                                insertbackground=self.text_color, relief="solid", borderwidth=1)
+                                                                  bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
+                                                                  insertbackground=self.text_color, relief="solid", borderwidth=1)
         self.download_psa_text_widget.pack(padx=5, pady=(0, 5), fill="both", expand=True)
 
         self.download_psa_spreadsheet_frame.grid(row=1, column=0, columnspan=3, sticky="ew")
-        self.download_psa_textbox_frame.grid(row=1, column=0, columnspan=3, sticky="nsew")
+        self.download_psa_textbox_frame.grid_remove()
 
         ttk.Label(download_psas_frame, text="Output Folder:", style='TLabel').grid(row=2, column=0, padx=5, pady=5, sticky="w")
         self.download_psa_output_folder = tk.StringVar()
@@ -2323,7 +2690,6 @@ class RenamerApp:
 
         self.download_psas_progress_wrapper = ttk.Frame(self.download_psas_run_control_frame, style='TFrame')
         self.download_psas_progress_wrapper.grid(row=0, column=1, sticky="ew")
-
         self.download_psas_progress_bar = ttk.Progressbar(self.download_psas_progress_wrapper, orient="horizontal", length=200, mode="determinate")
         self.download_psas_progress_bar.pack(side="left", fill="x", expand=True, padx=5)
         self.download_psas_progress_label = ttk.Label(self.download_psas_progress_wrapper, text="", style='TLabel')
@@ -2368,8 +2734,8 @@ class RenamerApp:
         self.get_measurements_textbox_frame.grid(row=1, column=0, columnspan=3, sticky="nsew")
         ttk.Label(self.get_measurements_textbox_frame, text="Paste SKUs (one per line):", style='TLabel').pack(padx=5, pady=5, anchor="w")
         self.get_measurements_text_widget = scrolledtext.ScrolledText(self.get_measurements_textbox_frame, width=60, height=8, font=self.base_font,
-                                                                bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
-                                                                insertbackground=self.text_color, relief="solid", borderwidth=1)
+                                                                  bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
+                                                                  insertbackground=self.text_color, relief="solid", borderwidth=1)
         self.get_measurements_text_widget.pack(padx=5, pady=(0, 5), fill="both", expand=True)
 
         self.get_measurements_run_control_frame = ttk.Frame(get_measurements_frame, style='TFrame')
@@ -2441,8 +2807,8 @@ class RenamerApp:
         self.move_files_textbox_frame.grid(row=3, column=0, columnspan=3, sticky="nsew")
         ttk.Label(self.move_files_textbox_frame, text="Paste Filenames (one per line):", style='TLabel').pack(padx=5, pady=5, anchor="w")
         self.move_files_text_widget = scrolledtext.ScrolledText(self.move_files_textbox_frame, width=60, height=8, font=self.base_font,
-                                                                bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
-                                                                insertbackground=self.text_color, relief="solid", borderwidth=1)
+                                                                 bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
+                                                                 insertbackground=self.text_color, relief="solid", borderwidth=1)
         self.move_files_text_widget.pack(padx=5, pady=(0, 5), fill="both", expand=True)
 
         self.move_files_spreadsheet_frame.grid(row=3, column=0, columnspan=3, sticky="ew")
@@ -2496,6 +2862,7 @@ class RenamerApp:
         self.or_boolean_spreadsheet_frame = ttk.Frame(or_boolean_frame, style='TFrame')
         self.or_boolean_spreadsheet_frame.grid(row=1, column=0, columnspan=3, sticky="ew")
         ttk.Label(self.or_boolean_spreadsheet_frame, text="SKU Spreadsheet (.xlsx):", style='TLabel').grid(row=0, column=0, padx=5, pady=5, sticky="w")
+        self.or_boolean_spreadsheet_path = tk.StringVar()
         ttk.Entry(self.or_boolean_spreadsheet_frame, textvariable=self.or_boolean_spreadsheet_path, width=45, style='TEntry').grid(row=0, column=1, padx=5, pady=5, sticky="ew")
         ttk.Button(self.or_boolean_spreadsheet_frame, text="Browse", command=lambda: self._browse_file(self.or_boolean_spreadsheet_path, "xlsx"), style='TButton').grid(row=0, column=2, padx=5, pady=5)
         self.or_boolean_spreadsheet_frame.grid_columnconfigure(1, weight=1)
@@ -2504,8 +2871,8 @@ class RenamerApp:
         self.or_boolean_textbox_frame.grid(row=1, column=0, columnspan=3, sticky="nsew")
         ttk.Label(self.or_boolean_textbox_frame, text="Paste SKUs (one per line):", style='TLabel').pack(padx=5, pady=5, anchor="w")
         self.or_boolean_text_widget = scrolledtext.ScrolledText(self.or_boolean_textbox_frame, width=60, height=8, font=self.base_font,
-                                                                bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
-                                                                insertbackground=self.text_color, relief="solid", borderwidth=1)
+                                                                 bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
+                                                                 insertbackground=self.text_color, relief="solid", borderwidth=1)
         self.or_boolean_text_widget.pack(padx=5, pady=(0, 5), fill="both", expand=True)
 
         self.or_boolean_spreadsheet_frame.grid(row=1, column=0, columnspan=3, sticky="ew")
@@ -2513,8 +2880,8 @@ class RenamerApp:
 
         ttk.Label(or_boolean_frame, text="Results:", style='TLabel').grid(row=2, column=0, padx=5, pady=5, sticky="w")
         self.or_boolean_results_textbox = scrolledtext.ScrolledText(or_boolean_frame, width=60, height=5, font=self.base_font,
-                                                                    bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
-                                                                    insertbackground=self.text_color, relief="solid", borderwidth=1, state='disabled')
+                                                                     bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
+                                                                     insertbackground=self.text_color, relief="solid", borderwidth=1, state='disabled')
         self.or_boolean_results_textbox.grid(row=3, column=0, columnspan=3, padx=5, pady=(0, 5), sticky="nsew")
         or_boolean_frame.grid_rowconfigure(3, weight=1)
 
@@ -2537,6 +2904,75 @@ class RenamerApp:
         self.or_boolean_progress_label = ttk.Label(self.or_boolean_progress_wrapper, text="", style='TLabel')
         self.or_boolean_progress_label.pack(side="right", padx=5)
         self.or_boolean_progress_wrapper.grid_remove()
+
+        row_counter += 1
+
+
+        # --- NEW SECTION: Clear Image Metadata ---
+        clear_metadata_wrapper_frame = ttk.Frame(self.scrollable_frame, style='SectionFrame.TFrame')
+        clear_metadata_wrapper_frame.grid(row=row_counter, column=0, columnspan=2, padx=10, pady=5, sticky="ew")
+        row_counter += 1
+
+        header_sub_frame_clear_metadata = ttk.Frame(clear_metadata_wrapper_frame, style='TFrame')
+        header_sub_frame_clear_metadata.pack(side="top", fill="x", pady=(0, 5), padx=0)
+        header_label_clear_metadata = ttk.Label(header_sub_frame_clear_metadata, text="Clear Image Metadata", style='Header.TLabel')
+        header_label_clear_metadata.pack(side="left", padx=(0, 5))
+        info_label_clear_metadata = ttk.Label(header_sub_frame_clear_metadata, text=" ⓘ", font=self.base_font)  
+        Tooltip(info_label_clear_metadata, "Clears specific embedded metadata (like description, keywords, title) from image files in a selected folder.", self.secondary_bg, self.text_color)  
+        info_label_clear_metadata.pack(side="left", anchor="center")
+
+        clear_metadata_frame = ttk.Frame(clear_metadata_wrapper_frame, style='TFrame')
+        clear_metadata_frame.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        clear_metadata_frame.grid_columnconfigure(1, weight=1)
+
+        ttk.Label(clear_metadata_frame, text="Input Images Folder:", style='TLabel').grid(row=0, column=0, padx=5, pady=5, sticky="w")
+        ttk.Entry(clear_metadata_frame, textvariable=self.clear_metadata_input_folder, width=45, style='TEntry').grid(row=0, column=1, padx=5, pady=5, sticky="ew")
+        ttk.Button(clear_metadata_frame, text="Browse", command=lambda: self._browse_folder(self.clear_metadata_input_folder), style='TButton').grid(row=0, column=2, padx=5, pady=5)
+
+        ttk.Label(clear_metadata_frame, text="Select Metadata to Clear:", style='TLabel').grid(row=1, column=0, padx=5, pady=5, sticky="w")
+        
+        # Frame for metadata checkboxes and buttons
+        metadata_controls_frame = ttk.Frame(clear_metadata_frame, style='TFrame')
+        metadata_controls_frame.grid(row=1, column=1, columnspan=2, sticky="w", padx=5, pady=5)
+
+        metadata_checkboxes_frame = ttk.Frame(metadata_controls_frame, style='TFrame')
+        metadata_checkboxes_frame.pack(side="top", fill="x", expand=True)
+
+        # Create and arrange checkboxes for each metadata property
+        # Sort keys to ensure consistent order in UI
+        sorted_metadata_props = sorted(self.clear_metadata_checkbox_vars.keys())
+        max_cols_metadata = 3 # You can adjust this number
+        for i, prop_name in enumerate(sorted_metadata_props):
+            row = i // max_cols_metadata
+            col = i % max_cols_metadata
+            ttk.Checkbutton(metadata_checkboxes_frame, text=prop_name, variable=self.clear_metadata_checkbox_vars[prop_name], style='TCheckbutton').grid(row=row, column=col, sticky="w", padx=2, pady=1)
+
+        # Select All and Clear All buttons for metadata
+        metadata_selection_buttons_frame = ttk.Frame(metadata_controls_frame, style='TFrame')
+        metadata_selection_buttons_frame.pack(side="bottom", fill="x", pady=(5,0))
+        ttk.Button(metadata_selection_buttons_frame, text="Select All", command=self._select_all_clear_metadata, style='TButton', width=10).pack(side="left", padx=2)
+        ttk.Button(metadata_selection_buttons_frame, text="Clear All", command=self._clear_all_clear_metadata, style='TButton', width=10).pack(side="left", padx=2)
+
+        self.clear_metadata_run_control_frame = ttk.Frame(clear_metadata_frame, style='TFrame')
+        self.clear_metadata_run_control_frame.grid(row=2, column=0, columnspan=3, pady=10, sticky="ew")
+        
+        self.clear_metadata_run_control_frame.grid_columnconfigure(0, weight=1)
+        self.clear_metadata_run_control_frame.grid_columnconfigure(1, weight=0)
+        self.clear_metadata_run_control_frame.grid_columnconfigure(2, weight=1)
+
+        self.clear_metadata_run_button_wrapper = ttk.Frame(self.clear_metadata_run_control_frame, style='TFrame')
+        self.clear_metadata_run_button_wrapper.grid(row=0, column=1, sticky="")
+        
+        self.run_clear_metadata_button = ttk.Button(self.clear_metadata_run_button_wrapper, text="Run Clear Metadata", command=self._run_clear_metadata_script, style='TButton')
+        self.run_clear_metadata_button.pack(padx=5, pady=0)
+
+        self.clear_metadata_progress_wrapper = ttk.Frame(self.clear_metadata_run_control_frame, style='TFrame')
+        self.clear_metadata_progress_wrapper.grid(row=0, column=1, sticky="ew")
+        self.clear_metadata_progress_bar = ttk.Progressbar(self.clear_metadata_progress_wrapper, orient="horizontal", length=200, mode="determinate")
+        self.clear_metadata_progress_bar.pack(side="left", fill="x", expand=True, padx=5)
+        self.clear_metadata_progress_label = ttk.Label(self.clear_metadata_progress_wrapper, text="", style='TLabel')
+        self.clear_metadata_progress_label.pack(side="right", padx=5)
+        self.clear_metadata_progress_wrapper.grid_remove()
 
         row_counter += 1
 

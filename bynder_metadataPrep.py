@@ -132,13 +132,13 @@ def generate_rows(vendor, sku, step_path, template):
         "Product Status", "Product Category", "Product Sub-Category", "Product Collection",
         "Component SKUs", "Stock Level (only relevant for Inline products)", "Restock Date (only relevant for Inline products)",
         "Link to Print Materials", "Link to Lifestyle Images", "Link to Store Images", "Initiative", "Sub-Initiative",
-        "Print Tracking Code", "Print Tracking - State Date", "Print Tracking - End Date", "Year", "Video Expiration",
+        "Print Tracking Code", "Print Tracking - Start Date", "Print Tracking - End Date", "Year", "Video Expiration",
         "Audio Licensing Expiration", "Ad ID", "Lead Offer Message", "Lead Finance Message", "Video Focus",
         "Video Objective", "Video Type", "Total Run Time (TRT)", "Spot Running (MM/DD/YYYY)", "Language",
         "Season", "Holiday/Special Occasion", "Talent", "Sunset Date (MM/DD/YYYY)", "Location Name", "Store Code",
         "Location Status", "Location Address", "Location Town", "Location State", "Location Zip Code",
         "Location Phone Number", "Location Type", "Location", "Inactive Product", "Partner", "Notes",
-        "Sign Facade Color", "Sign Location", "Sign Color", "Sign Text", "Reviewed for Site",
+        "Sign Facade Color", "Sign Location", "Sign Color", "Sign Text",
         "Reviewed products in lifestyle", "Reviewed Studio Uploads", "Featured SKU", "Image Type",
         "scratchpad", "3D Model Source Files Acquired", "Visible to", "BynderTest", "dim_Length",
         "Bynder Report", "Dimensions", "dim_Height", "Figmage doc id", "dim_Width", "Figmage image extension",
@@ -149,7 +149,7 @@ def generate_rows(vendor, sku, step_path, template):
         "Variant Type", "Source", "PSA Image Type", "Rights Notes", "Workflow", "Workflow Status",
         "Product Name (STEP)", "Vendor Code", "Family Code", "Hero SKU", "Product Color", "Dropped",
         "Visible on Website", "Sales Channel", "Associated Materials Status", "Product in Studio",
-        "DNU_PromoUpdate2", "Additional Files Upload Scratchpad", "Bump"
+        "DNU_PromoUpdate2", "Additional Files Upload Scratchpad", "Bump", "Carousel Dimensions Diagram Audit", "User Status", "Reviewed for Site Content Refresh", "Image Type Pre-Classification"
     ]
 
     for item in template:
@@ -411,13 +411,13 @@ def main():
         "Product Status", "Product Category", "Product Sub-Category", "Product Collection",
         "Component SKUs", "Stock Level (only relevant for Inline products)", "Restock Date (only relevant for Inline products)",
         "Link to Print Materials", "Link to Lifestyle Images", "Link to Store Images", "Initiative", "Sub-Initiative",
-        "Print Tracking Code", "Print Tracking - State Date", "Print Tracking - End Date", "Year", "Video Expiration",
+        "Print Tracking Code", "Print Tracking - Start Date", "Print Tracking - End Date", "Year", "Video Expiration",
         "Audio Licensing Expiration", "Ad ID", "Lead Offer Message", "Lead Finance Message", "Video Focus",
         "Video Objective", "Video Type", "Total Run Time (TRT)", "Spot Running (MM/DD/YYYY)", "Language",
         "Season", "Holiday/Special Occasion", "Talent", "Sunset Date (MM/DD/YYYY)", "Location Name", "Store Code",
         "Location Status", "Location Address", "Location Town", "Location State", "Location Zip Code",
         "Location Phone Number", "Location Type", "Location", "Inactive Product", "Partner", "Notes",
-        "Sign Facade Color", "Sign Location", "Sign Color", "Sign Text", "Reviewed for Site",
+        "Sign Facade Color", "Sign Location", "Sign Color", "Sign Text",
         "Reviewed products in lifestyle", "Reviewed Studio Uploads", "Featured SKU", "Image Type",
         "scratchpad", "3D Model Source Files Acquired", "Visible to", "BynderTest", "dim_Length",
         "Bynder Report", "Dimensions", "dim_Height", "Figmage doc id", "dim_Width", "Figmage image extension",
@@ -426,7 +426,7 @@ def main():
         "DNUDistribution Channel", "Dim diagram re-cropped", "Embedded Instructions (for updating existing metadata based on automations)", "Mattress Size", "Asset Identifier", "Sync Batch", "Marked for Deletion from Site", "scene7 folder", "Variant Type", "Source", "PSA Image Type", "Rights Notes", "Workflow", "Workflow Status",
         "Product Name (STEP)", "Vendor Code", "Family Code", "Hero SKU", "Product Color", "Dropped",
         "Visible on Website", "Sales Channel", "Associated Materials Status", "Product in Studio",
-        "DNU_PromoUpdate2", "Additional Files Upload Scratchpad", "Bump"
+        "DNU_PromoUpdate2", "Additional Files Upload Scratchpad", "Bump", "Carousel Dimensions Diagram Audit", "User Status", "Reviewed for Site Content Refresh", "Image Type Pre-Classification"
     ]
     # Create the final pandas DataFrame from the accumulated data
     output_df = pd.DataFrame(output_data, columns=final_columns)

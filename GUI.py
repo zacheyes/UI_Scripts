@@ -67,7 +67,8 @@ SCRIPT_FILENAMES = {
     "Move Files from Spreadsheet": "move_filename.py",
     "OR Boolean Search Creator": "or.py",
     "Clear Metadata Script": "clear_metadata.py",
-    "Directory List Exporter": "dir_list.py",
+    # NEW: Add the directory list script if it were a separate file
+    # "Directory List Exporter": "directory_list_exporter.py",
 }
 
 # NEW: GitHub URLs for Python scripts
@@ -90,7 +91,7 @@ GITHUB_SCRIPT_URLS = {
     "move_filename.py": GITHUB_RAW_BASE_URL + "move_filename.py",
     "or.py": GITHUB_RAW_BASE_URL + "or.py",
     "clear_metadata.py": GITHUB_RAW_BASE_URL + "clear_metadata.py",
-    "dir_list.py": GITHUB_RAW_BASE_URL + "dir_list.py",
+    # "directory_list_exporter.py": GITHUB_RAW_BASE_URL + "directory_list_exporter.py", # If this were a separate file
 }
 
 RENAMER_EXCEL_URL = "https://www.bynder.raymourflanigan.com/m/333617bb041ff764/original/renaminator.xlsx"
@@ -2698,7 +2699,7 @@ class RenamerApp:
         header_label_download_psa = ttk.Label(header_sub_frame_download_psa, text="Download PSAs", style='Header.TLabel')
         header_label_download_psa.pack(side="left", padx=(0, 5))
         info_label_download_psa = ttk.Label(header_sub_frame_download_psa, text=" ⓘ", font=self.base_font)  
-        Tooltip(info_label_download_psa, "Downloads specified PSA (Product Shot Asset) image types from Bynder for a list of SKUs.", self.secondary_bg, self.text_color)  
+        Tooltip(info_label_download_psa, "Downloads specified PSAs (Product Site Assets) from Bynder for a list of SKUs. Choose assets based on their Product SKU Position affix. SquareThumbnail is a 400x400 square converted from the SKU’s grid image.", self.secondary_bg, self.text_color)  
         info_label_download_psa.pack(side="left", anchor="center")
 
         download_psas_frame = ttk.Frame(download_psas_wrapper_frame, style='TFrame')
@@ -2733,7 +2734,7 @@ class RenamerApp:
         ttk.Entry(download_psas_frame, textvariable=self.download_psa_output_folder, width=45, style='TEntry').grid(row=2, column=1, padx=5, pady=5, sticky="ew")
         ttk.Button(download_psas_frame, text="Browse", command=lambda: self._browse_folder(self.download_psa_output_folder), style='TButton').grid(row=2, column=2, padx=5, pady=5)
 
-        ttk.Label(download_psas_frame, text="Select Image Types:", style='TLabel').grid(row=3, column=0, padx=5, pady=5, sticky="w")
+        ttk.Label(download_psas_frame, text="Select Assets:", style='TLabel').grid(row=3, column=0, padx=5, pady=5, sticky="w")
         
         # Frame for checkboxes and new buttons
         image_types_controls_frame = ttk.Frame(download_psas_frame, style='TFrame')

@@ -13,6 +13,7 @@ import threading
 import pandas as pd
 import tempfile
 import zipfile
+import csv # Import csv for the directory list script
 
 # --- Configuration ---
 # Define your GitHub repository details
@@ -66,6 +67,8 @@ SCRIPT_FILENAMES = {
     "Move Files from Spreadsheet": "move_filename.py",
     "OR Boolean Search Creator": "or.py",
     "Clear Metadata Script": "clear_metadata.py",
+    # NEW: Add the directory list script if it were a separate file
+    # "Directory List Exporter": "directory_list_exporter.py",
 }
 
 # NEW: GitHub URLs for Python scripts
@@ -88,6 +91,7 @@ GITHUB_SCRIPT_URLS = {
     "move_filename.py": GITHUB_RAW_BASE_URL + "move_filename.py",
     "or.py": GITHUB_RAW_BASE_URL + "or.py",
     "clear_metadata.py": GITHUB_RAW_BASE_URL + "clear_metadata.py",
+    # "directory_list_exporter.py": GITHUB_RAW_BASE_URL + "directory_list_exporter.py", # If this were a separate file
 }
 
 RENAMER_EXCEL_URL = "https://www.bynder.raymourflanigan.com/m/333617bb041ff764/original/renaminator.xlsx"
@@ -112,18 +116,29 @@ def _prepare_progress_ui(progress_bar, progress_label, run_button_wrapper, progr
     progress_wrapper.grid(row=0, column=1)
 
     progress_bar.config(value=0, maximum=100)
-    progress_bar.start()
+    progress_bar.start() # Start indeterminate mode
     progress_label.config(text=initial_text)
 
 
-def _update_progress_ui(progress_bar, progress_label, value):
-    progress_bar.stop()
-    progress_bar['value'] = value
-    progress_label.config(text=f"{value:.1f}%")
+def _update_progress_ui(progress_bar, progress_label, value, total_items=None):
+    if progress_bar.cget('mode') != "determinate":
+        progress_bar.config(mode="determinate") # Switch to determinate if not already
+
+    if total_items is not None and total_items > 0:
+        percent = (value / total_items) * 100
+        progress_bar['value'] = percent
+        progress_label.config(text=f"{percent:.1f}% ({value}/{total_items})")
+    else:
+        # Fallback if total items is not available or is 0
+        progress_bar['value'] = value
+        progress_label.config(text=f"{value:.1f}%")
+
+    progress_bar.update_idletasks() # Force UI update
 
 def _on_process_complete_with_progress_ui(success, full_output, progress_bar, progress_label, run_button_wrapper, progress_wrapper, success_callback, error_callback, log_output_widget):
     if progress_bar:
         progress_bar.stop()
+        progress_bar.config(mode="determinate", value=0) # Reset to 0 and determinate mode
     if progress_label:
         progress_label.config(text="")
     
@@ -176,7 +191,7 @@ def _run_script_with_progress(script_full_path, args, log_output_widget, progres
             env['PYTHONIOENCODING'] = 'utf-8'
 
             process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                         bufsize=1, universal_newlines=True, env=env)
+                                        bufsize=1, universal_newlines=True, env=env)
 
             def read_stream(stream, buffer, is_stderr=False):
                 for line in stream:
@@ -184,10 +199,15 @@ def _run_script_with_progress(script_full_path, args, log_output_widget, progres
                     log_output_widget.after(0, lambda log=log_output_widget, l=line: _append_to_log(log, l, is_stderr))
                     if line.startswith("PROGRESS:"):
                         try:
-                            percent_str = line.split("PROGRESS:")[1].strip()
-                            percent_val = float(percent_str)
-                            # Ensure after call is on the main thread for UI updates
-                            progress_bar.after(0, lambda pb=progress_bar, pl=progress_label, val=percent_val: _update_progress_ui(pb, pl, val))
+                            # Expecting "PROGRESS: <value>/<total>" or "PROGRESS: <percent_float>"
+                            parts = line.split("PROGRESS:")[1].strip().split('/')
+                            if len(parts) == 2:
+                                value = float(parts[0])
+                                total = float(parts[1])
+                                progress_bar.after(0, lambda pb=progress_bar, pl=progress_label, val=value, tot=total: _update_progress_ui(pb, pl, val, tot))
+                            else:
+                                percent_val = float(parts[0])
+                                progress_bar.after(0, lambda pb=progress_bar, pl=progress_label, val=percent_val: _update_progress_ui(pb, pl, val, 100)) # Treat as percentage if only one value
                         except ValueError:
                             print(f"DEBUG (UI): Could not parse progress: {line.strip()}", file=sys.stderr)
                 stream.close()
@@ -453,6 +473,9 @@ class RenamerApp:
             "Event": tk.BooleanVar(value=False),
         }
 
+        # NEW: Variable for Directory List tool
+        self.dir_list_folder_path = tk.StringVar(value="")
+
 
         self.log_expanded = False
 
@@ -494,8 +517,6 @@ class RenamerApp:
             "scripts_root_folder": self.scripts_root_folder.get(),
             "last_update": self.last_update_timestamp.get(),
             "gui_last_update": self.gui_last_update_timestamp.get(),
-            # Removed saving clear_metadata_settings and clear_metadata_input_folder here
-            # to ensure they reset on relaunch.
             "check_psa_sku_spreadsheet_path": self.check_psa_sku_spreadsheet_path.get(),
             "download_psa_sku_spreadsheet_path": self.download_psa_sku_spreadsheet_path.get(),
             "get_measurements_sku_spreadsheet_path": self.get_measurements_sku_spreadsheet_path.get(),
@@ -581,7 +602,7 @@ class RenamerApp:
                 # self.clear_metadata_input_folder.set(config_data.get("clear_metadata_input_folder", ""))
                 # loaded_clear_metadata_settings = config_data.get("clear_metadata_settings", {})
                 # for prop, var in self.clear_metadata_checkbox_vars.items():
-                #     var.set(loaded_clear_metadata_settings.get(prop, False))
+                #   var.set(loaded_clear_metadata_settings.get(prop, False))
 
                 # Load other variables (keep loading these)
                 self.check_psa_sku_spreadsheet_path.set(config_data.get("check_psa_sku_spreadsheet_path", ""))
@@ -632,7 +653,6 @@ class RenamerApp:
                 self.download_psa_input_type.set(config_data.get("download_psa_input_type", "spreadsheet"))
                 self.get_measurements_input_type.set(config_data.get("get_measurements_input_type", "spreadsheet"))
                 self.move_files_input_type.set(config_data.get("move_files_input_type", "spreadsheet"))
-
 
                 self.log_print("Configuration loaded successfully.\n")
             except json.JSONDecodeError as e:
@@ -719,8 +739,8 @@ class RenamerApp:
                              relief='flat',
                              padding=5)
         self.style.map('TButton',
-                        background=[('active', self._shade_color(self.accent_color, -0.1))],  
-                        foreground=[('active', self.RF_WHITE_BASE)])  
+                         background=[('active', self._shade_color(self.accent_color, -0.1))],  
+                         foreground=[('active', self.RF_WHITE_BASE)])  
 
         self.style.configure('TEntry',
                              fieldbackground=self.secondary_bg,
@@ -734,7 +754,7 @@ class RenamerApp:
                              bordercolor=self.trough_color,
                              arrowcolor=self.text_color)
         self.style.map('TScrollbar',
-                        background=[('active', self._shade_color(self.slider_color, -0.1))])
+                         background=[('active', self._shade_color(self.slider_color, -0.1))])
 
         self.style.configure('TNotebook',
                              background=self.primary_bg,
@@ -745,9 +765,9 @@ class RenamerApp:
                              font=self.base_font,
                              padding=[5, 2])
         self.style.map('TNotebook.Tab',
-                        background=[('selected', self.accent_color)],
-                        foreground=[('selected', self.RF_WHITE_BASE)],  
-                        expand=[('selected', [1, 1, 1, 0])])  
+                         background=[('selected', self.accent_color)],
+                         foreground=[('selected', self.RF_WHITE_BASE)],  
+                         expand=[('selected', [1, 1, 1, 0])])  
 
         self.style.configure('TRadiobutton',
                              background=self.primary_bg,
@@ -755,9 +775,9 @@ class RenamerApp:
                              font=self.base_font,
                              indicatorcolor=self.accent_color)
         self.style.map('TRadiobutton',
-                        background=[('active', self.radiobutton_hover_bg)],
-                        foreground=[('active', self.text_color)],
-                        indicatorcolor=[('selected', self.accent_color), ('!selected', self.checkbox_indicator_off)])
+                         background=[('active', self.radiobutton_hover_bg)],
+                         foreground=[('active', self.text_color)],
+                         indicatorcolor=[('selected', self.accent_color), ('!selected', self.checkbox_indicator_off)])
         
         self.style.configure('TCheckbutton',
                              background=self.primary_bg,
@@ -765,13 +785,13 @@ class RenamerApp:
                              font=self.base_font,
                              indicatorcolor=self.checkbox_indicator_off)
         self.style.map('TCheckbutton',
-                        background=[('active', self.checkbox_hover_bg)],
-                        foreground=[('active', self.text_color)],
-                        indicatorcolor=[('selected', self.checkbox_indicator_on), ('!selected', self.checkbox_indicator_off)])
+                         background=[('active', self.checkbox_hover_bg)],
+                         foreground=[('active', self.text_color)],
+                         indicatorcolor=[('selected', self.checkbox_indicator_on), ('!selected', self.checkbox_indicator_off)])
 
         self.style.configure('TSeparator', background=self.border_color, relief='solid', sashrelief='solid', sashwidth=3)
         self.style.layout('TSeparator',
-                              [('TSeparator.separator', {'sticky': 'nswe'})])
+                                 [('TSeparator.separator', {'sticky': 'nswe'})])
 
         self.style.configure('TCombobox',
                              fieldbackground=self.secondary_bg,  
@@ -779,11 +799,11 @@ class RenamerApp:
                              foreground=self.text_color,
                              arrowcolor=self.text_color)
         self.style.map('TCombobox',
-                        fieldbackground=[('readonly', self.secondary_bg)],
-                        background=[('readonly', self.primary_bg)],
-                        foreground=[('readonly', self.text_color)],
-                        selectbackground=[('readonly', self._shade_color(self.secondary_bg, -0.05))],  
-                        selectforeground=[('readonly', self.text_color)])  
+                         fieldbackground=[('readonly', self.secondary_bg)],
+                         background=[('readonly', self.primary_bg)],
+                         foreground=[('readonly', self.text_color)],
+                         selectbackground=[('readonly', self._shade_color(self.secondary_bg, -0.05))],  
+                         selectforeground=[('readonly', self.text_color)])  
 
         if hasattr(self, 'log_text'):
             self.log_text.config(bg=self.log_bg, fg=self.log_text_color,
@@ -1033,7 +1053,7 @@ class RenamerApp:
                     os.chmod(executable_path, 0o755) # rwxr-xr-x
                     self.log_print(f"  Set execute permissions for {os.path.basename(executable_path)}")
             # For Windows (exiftool.exe), the execute permission bit isn't directly controlled by chmod in the same way,
-            # and it should already be executable if extracted correctly. No specific chmod needed.
+            # and it should already be executable. No specific chmod needed.
             
             # Clean up the temporary zip file
             os.remove(temp_zip_path)
@@ -1508,7 +1528,7 @@ class RenamerApp:
 
         if not os.path.exists(bynder_script_path):
             messagebox.showerror("Error", f"Bynder Metadata Prep script not found: {bynder_script_path}\n"
-                                          f"Please ensure '{bynder_script_name}' is in your scripts folder.")
+                                             f"Please ensure '{bynder_script_name}' is in your scripts folder.")
             return
 
         self.log_print(f"\n--- Running Bynder Metadata Prep Script ({bynder_script_name}) ---")
@@ -1521,7 +1541,7 @@ class RenamerApp:
         def bynder_prep_success_callback(output):
             self.run_bynder_prep_button.config(state='normal')
             messagebox.showinfo("Success", "Bynder Metadata Prep script completed successfully!\n"
-                                          "The metadata importer CSV should be in your downloads folder.")
+                                             "The metadata importer CSV should be in your downloads folder.")
         def bynder_prep_error_callback(output):
             self.run_bynder_prep_button.config(state='normal')
             messagebox.showerror("Error", "Bynder Metadata Prep script failed. Please check the log for details.")
@@ -1582,7 +1602,7 @@ class RenamerApp:
 
         if not os.path.exists(check_psas_script_path):
             messagebox.showerror("Error", f"Check Bynder PSAs script not found: {check_psas_script_path}\n"
-                                          f"Please ensure '{check_psas_script_name}' is in your scripts folder.")
+                                             f"Please ensure '{check_psas_script_name}' is in your scripts folder.")
             return
         
         sku_input_data, is_file_path = self._get_skus_from_input(  
@@ -1603,7 +1623,7 @@ class RenamerApp:
         def check_psas_success_callback(output):
             self.run_check_psas_button.config(state='normal')
             messagebox.showinfo("Success", "Check Bynder PSAs script completed successfully!\n"
-                                          "Results should be in your downloads folder.")
+                                             "Results should be in your downloads folder.")
             if self.check_psa_input_type.get() == "textbox" and is_file_path and os.path.exists(sku_input_data):
                 try:
                     os.remove(sku_input_data)
@@ -1635,7 +1655,7 @@ class RenamerApp:
 
         if not os.path.exists(download_psas_script_path):
             messagebox.showerror("Error", f"Download PSAs script not found: {download_psas_script_path}\n"
-                                          f"Please ensure '{download_psas_script_name}' is in your scripts folder.")
+                                             f"Please ensure '{download_psas_script_name}' is in your scripts folder.")
             return
         
         sku_input_data, is_file_path = self._get_skus_from_input(
@@ -1697,7 +1717,7 @@ class RenamerApp:
         def download_success_callback(output):
             self.run_download_psas_button.config(state='normal')
             messagebox.showinfo("Success", f"Download PSAs script completed successfully!\n"
-                                          f"Results are in the selected output folder: {output_folder_path}")
+                                             f"Results are in the selected output folder: {output_folder_path}")
             if self.download_psa_input_type.get() == "textbox" and is_file_path and os.path.exists(sku_input_data):
                 try:
                     os.remove(sku_input_data)
@@ -1739,7 +1759,7 @@ class RenamerApp:
 
         if not os.path.exists(get_measurements_script_path):
             messagebox.showerror("Error", f"Get Measurements script not found: {get_measurements_script_path}\n"
-                                          f"Please ensure '{get_measurements_script_name}' is in your scripts folder.")
+                                             f"Please ensure '{get_measurements_script_name}' is in your scripts folder.")
             return
 
         sku_input_data, is_file_path = self._get_skus_from_input(
@@ -1777,7 +1797,7 @@ class RenamerApp:
         def get_measurements_success_callback(output):
             self.run_get_measurements_button.config(state='normal')
             messagebox.showinfo("Success", f"Get Measurements script completed successfully!\n"
-                                          f"{output_location_message}")
+                                             f"{output_location_message}")
             if self.get_measurements_input_type.get() == "textbox" and is_file_path and os.path.exists(sku_input_data):
                 try:
                     os.remove(sku_input_data)
@@ -1814,7 +1834,7 @@ class RenamerApp:
 
         if not os.path.exists(convert_script_path):
             messagebox.showerror("Error", f"Bynder Metadata Conversion script not found: {convert_script_path}\n"
-                                          f"Please ensure '{convert_script_name}' is in your scripts folder.")
+                                             f"Please ensure '{convert_script_name}' is in your scripts folder.")
             return
         if not input_csv_path or not os.path.exists(input_csv_path) or not input_csv_path.lower().endswith('.csv'):
             messagebox.showerror("Input Error", "Please select a valid Bynder Metadata CSV file (.csv).")
@@ -1829,7 +1849,7 @@ class RenamerApp:
         def convert_success_callback(output):
             self.run_bynder_metadata_convert_button.config(state='normal')
             messagebox.showinfo("Success", f"Bynder Metadata CSV converted successfully!\n"
-                                          f"The converted Excel file is in your Downloads folder.")
+                                             f"The converted Excel file is in your Downloads folder.")
         def convert_error_callback(output):
             self.run_bynder_metadata_convert_button.config(state='normal')
             messagebox.showerror("Error", "Bynder Metadata conversion failed. Please check the log for details.")
@@ -1850,7 +1870,7 @@ class RenamerApp:
 
         if not os.path.exists(move_script_path):
             messagebox.showerror("Error", f"Move Files script not found: {move_script_path}\n"
-                                          f"Please ensure '{move_script_name}' is in your scripts folder.")
+                                             f"Please ensure '{move_script_name}' is in your scripts folder.")
             return
 
         source_folder = self.move_files_source_folder.get()
@@ -1935,7 +1955,7 @@ class RenamerApp:
 
         if not os.path.exists(or_script_path):
             messagebox.showerror("Error", f"OR Boolean Search Creator script not found: {or_script_path}\n"
-                                          f"Please ensure '{or_script_name}' is in your scripts folder.")
+                                             f"Please ensure '{or_script_name}' is in your scripts folder.")
             return
 
         input_data, is_file_path = self._get_skus_from_input(
@@ -2007,7 +2027,7 @@ class RenamerApp:
 
         if not os.path.exists(clear_metadata_script_path):
             messagebox.showerror("Error", f"Clear Metadata script not found: {clear_metadata_script_path}\n"
-                                          f"Please ensure '{clear_metadata_script_name}' is in your scripts folder.")
+                                             f"Please ensure '{clear_metadata_script_name}' is in your scripts folder.")
             return
         if not input_folder or not os.path.isdir(input_folder):
             messagebox.showerror("Input Error", "Please select a valid Input Folder for clearing metadata.")
@@ -2060,6 +2080,84 @@ class RenamerApp:
         """Sets all Clear Metadata checkboxes to False."""
         for var in self.clear_metadata_checkbox_vars.values():
             var.set(False)
+
+    # --- NEW: Directory List Functions ---
+    def _run_directory_list_script(self):
+        directory_path = self.dir_list_folder_path.get()
+
+        if not directory_path or not os.path.isdir(directory_path):
+            messagebox.showerror("Input Error", "Please select a valid directory to list.")
+            return
+        if not os.path.exists(directory_path):
+            messagebox.showerror("Input Error", f"Directory not found: {directory_path}")
+            return
+
+        self.log_print(f"\n--- Running Directory List Export ---")
+        self.log_print(f"Listing contents of: {directory_path}")
+
+        # Disable the run button and prepare progress UI
+        self.run_dir_list_button.config(state='disabled')
+        _prepare_progress_ui(self.dir_list_progress_bar, self.dir_list_progress_label,
+                             self.dir_list_run_button_wrapper, self.dir_list_progress_wrapper,
+                             initial_text="Processing directory...")
+
+        def _execute_dir_list_threaded():
+            success = False
+            output_msg = ""
+            try:
+                # Get current timestamp
+                timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                # Define the output CSV file path in the Downloads folder
+                output_csv_filename = f"Directory_List_{timestamp}.csv"
+                output_csv_path = os.path.join(os.path.expanduser('~'), 'Downloads', output_csv_filename)
+                
+                # Ensure the Downloads directory exists
+                os.makedirs(os.path.dirname(output_csv_path), exist_ok=True)
+
+                total_files = sum([len(files) for r, d, files in os.walk(directory_path)])
+                processed_files = 0
+
+                with open(output_csv_path, mode='w', newline='', encoding='utf-8') as file:
+                    writer = csv.writer(file)
+                    writer.writerow(["Full Path", "Filename"])  # Write the header
+
+                    for root, dirs, files in os.walk(directory_path):
+                        for filename in files:
+                            full_path = os.path.join(root, filename)
+                            writer.writerow([full_path, filename])
+                            processed_files += 1
+                            # Update progress periodically
+                            if total_files > 0:
+                                self.master.after(0, lambda p=processed_files, t=total_files: _update_progress_ui(self.dir_list_progress_bar, self.dir_list_progress_label, p, t))
+                            else: # If directory is empty or has only folders
+                                self.master.after(0, lambda: _update_progress_ui(self.dir_list_progress_bar, self.dir_list_progress_label, 100))
+                                
+                success = True
+                output_msg = f"Directory list has been exported to: {output_csv_path}"
+                self.log_print(f"Directory list exported: {output_csv_path}\n", is_stderr=False)
+
+            except Exception as e:
+                output_msg = f"An error occurred during directory listing: {e}"
+                self.log_print(f"Error: {output_msg}\n", is_stderr=True)
+            finally:
+                self.master.after(0, lambda: _on_process_complete_with_progress_ui(
+                    success, output_msg,
+                    self.dir_list_progress_bar, self.dir_list_progress_label,
+                    self.dir_list_run_button_wrapper, self.dir_list_progress_wrapper,
+                    self._dir_list_success_callback, self._dir_list_error_callback,
+                    self.log_text
+                ))
+
+        threading.Thread(target=_execute_dir_list_threaded).start()
+
+    def _dir_list_success_callback(self, output):
+        self.run_dir_list_button.config(state='normal')
+        messagebox.showinfo("Success", f"Directory list export completed successfully!\n{output}")
+
+    def _dir_list_error_callback(self, output):
+        self.run_dir_list_button.config(state='normal')
+        messagebox.showerror("Error", f"Directory list export failed. Please check the log for details.\n{output}")
+
 
     def _setup_initial_state(self):
         """
@@ -2130,7 +2228,7 @@ class RenamerApp:
         self.theme_label.pack(side="left", padx=(0, 5))
         
         self.theme_selector = ttk.Combobox(theme_frame, textvariable=self.current_theme,  
-                                         values=["Light", "Dark"], state="readonly", width=6)
+                                             values=["Light", "Dark"], state="readonly", width=6)
         self.theme_selector.pack(side="left")
         self.theme_selector.bind("<<ComboboxSelected>>", self._on_theme_change)
         
@@ -2566,8 +2664,8 @@ class RenamerApp:
         self.check_psa_textbox_frame = ttk.Frame(check_psas_frame, style='TFrame')
         ttk.Label(self.check_psa_textbox_frame, text="Paste SKUs (one per line):", style='TLabel').pack(padx=5, pady=5, anchor="w")
         self.check_psa_text_widget = scrolledtext.ScrolledText(self.check_psa_textbox_frame, width=60, height=8, font=self.base_font,
-                                                               bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
-                                                               insertbackground=self.text_color, relief="solid", borderwidth=1)
+                                             bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
+                                             insertbackground=self.text_color, relief="solid", borderwidth=1)
         self.check_psa_text_widget.pack(padx=5, pady=(0, 5), fill="both", expand=True)
 
         self.check_psas_run_control_frame = ttk.Frame(check_psas_frame, style='TFrame')
@@ -2624,8 +2722,8 @@ class RenamerApp:
         self.download_psa_textbox_frame = ttk.Frame(download_psas_frame, style='TFrame')
         ttk.Label(self.download_psa_textbox_frame, text="Paste SKUs (one per line):", style='TLabel').pack(padx=5, pady=5, anchor="w")
         self.download_psa_text_widget = scrolledtext.ScrolledText(self.download_psa_textbox_frame, width=60, height=8, font=self.base_font,
-                                                                  bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
-                                                                  insertbackground=self.text_color, relief="solid", borderwidth=1)
+                                             bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
+                                             insertbackground=self.text_color, relief="solid", borderwidth=1)
         self.download_psa_text_widget.pack(padx=5, pady=(0, 5), fill="both", expand=True)
 
         self.download_psa_spreadsheet_frame.grid(row=1, column=0, columnspan=3, sticky="ew")
@@ -2734,8 +2832,8 @@ class RenamerApp:
         self.get_measurements_textbox_frame.grid(row=1, column=0, columnspan=3, sticky="nsew")
         ttk.Label(self.get_measurements_textbox_frame, text="Paste SKUs (one per line):", style='TLabel').pack(padx=5, pady=5, anchor="w")
         self.get_measurements_text_widget = scrolledtext.ScrolledText(self.get_measurements_textbox_frame, width=60, height=8, font=self.base_font,
-                                                                  bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
-                                                                  insertbackground=self.text_color, relief="solid", borderwidth=1)
+                                             bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
+                                             insertbackground=self.text_color, relief="solid", borderwidth=1)
         self.get_measurements_text_widget.pack(padx=5, pady=(0, 5), fill="both", expand=True)
 
         self.get_measurements_run_control_frame = ttk.Frame(get_measurements_frame, style='TFrame')
@@ -2807,8 +2905,8 @@ class RenamerApp:
         self.move_files_textbox_frame.grid(row=3, column=0, columnspan=3, sticky="nsew")
         ttk.Label(self.move_files_textbox_frame, text="Paste Filenames (one per line):", style='TLabel').pack(padx=5, pady=5, anchor="w")
         self.move_files_text_widget = scrolledtext.ScrolledText(self.move_files_textbox_frame, width=60, height=8, font=self.base_font,
-                                                                 bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
-                                                                 insertbackground=self.text_color, relief="solid", borderwidth=1)
+                                             bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
+                                             insertbackground=self.text_color, relief="solid", borderwidth=1)
         self.move_files_text_widget.pack(padx=5, pady=(0, 5), fill="both", expand=True)
 
         self.move_files_spreadsheet_frame.grid(row=3, column=0, columnspan=3, sticky="ew")
@@ -2871,8 +2969,8 @@ class RenamerApp:
         self.or_boolean_textbox_frame.grid(row=1, column=0, columnspan=3, sticky="nsew")
         ttk.Label(self.or_boolean_textbox_frame, text="Paste SKUs (one per line):", style='TLabel').pack(padx=5, pady=5, anchor="w")
         self.or_boolean_text_widget = scrolledtext.ScrolledText(self.or_boolean_textbox_frame, width=60, height=8, font=self.base_font,
-                                                                 bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
-                                                                 insertbackground=self.text_color, relief="solid", borderwidth=1)
+                                             bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
+                                             insertbackground=self.text_color, relief="solid", borderwidth=1)
         self.or_boolean_text_widget.pack(padx=5, pady=(0, 5), fill="both", expand=True)
 
         self.or_boolean_spreadsheet_frame.grid(row=1, column=0, columnspan=3, sticky="ew")
@@ -2880,8 +2978,8 @@ class RenamerApp:
 
         ttk.Label(or_boolean_frame, text="Results:", style='TLabel').grid(row=2, column=0, padx=5, pady=5, sticky="w")
         self.or_boolean_results_textbox = scrolledtext.ScrolledText(or_boolean_frame, width=60, height=5, font=self.base_font,
-                                                                     bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
-                                                                     insertbackground=self.text_color, relief="solid", borderwidth=1, state='disabled')
+                                             bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD,
+                                             insertbackground=self.text_color, relief="solid", borderwidth=1, state='disabled')
         self.or_boolean_results_textbox.grid(row=3, column=0, columnspan=3, padx=5, pady=(0, 5), sticky="nsew")
         or_boolean_frame.grid_rowconfigure(3, weight=1)
 
@@ -2976,6 +3074,49 @@ class RenamerApp:
 
         row_counter += 1
 
+        # --- NEW SECTION: Directory List Exporter ---
+        dir_list_wrapper_frame = ttk.Frame(self.scrollable_frame, style='SectionFrame.TFrame')
+        dir_list_wrapper_frame.grid(row=row_counter, column=0, columnspan=2, padx=10, pady=5, sticky="ew")
+        row_counter += 1
+
+        header_sub_frame_dir_list = ttk.Frame(dir_list_wrapper_frame, style='TFrame')
+        header_sub_frame_dir_list.pack(side="top", fill="x", pady=(0, 5), padx=0)
+        header_label_dir_list = ttk.Label(header_sub_frame_dir_list, text="Export Directory List to CSV", style='Header.TLabel')
+        header_label_dir_list.pack(side="left", padx=(0, 5))
+        info_label_dir_list = ttk.Label(header_sub_frame_dir_list, text=" ⓘ", font=self.base_font)  
+        Tooltip(info_label_dir_list, "Exports a list of all files in a selected directory and its subdirectories to a timestamped CSV file in your Downloads folder.", self.secondary_bg, self.text_color)  
+        info_label_dir_list.pack(side="left", anchor="center")
+
+        dir_list_frame = ttk.Frame(dir_list_wrapper_frame, style='TFrame')
+        dir_list_frame.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        dir_list_frame.grid_columnconfigure(1, weight=1)
+
+        ttk.Label(dir_list_frame, text="Select Folder to List:", style='TLabel').grid(row=0, column=0, padx=5, pady=5, sticky="w")
+        ttk.Entry(dir_list_frame, textvariable=self.dir_list_folder_path, width=45, style='TEntry').grid(row=0, column=1, padx=5, pady=5, sticky="ew")
+        ttk.Button(dir_list_frame, text="Browse", command=lambda: self._browse_folder(self.dir_list_folder_path), style='TButton').grid(row=0, column=2, padx=5, pady=5)
+
+        self.dir_list_run_control_frame = ttk.Frame(dir_list_frame, style='TFrame')
+        self.dir_list_run_control_frame.grid(row=1, column=0, columnspan=3, pady=10, sticky="ew")
+        
+        self.dir_list_run_control_frame.grid_columnconfigure(0, weight=1)
+        self.dir_list_run_control_frame.grid_columnconfigure(1, weight=0)
+        self.dir_list_run_control_frame.grid_columnconfigure(2, weight=1)
+
+        self.dir_list_run_button_wrapper = ttk.Frame(self.dir_list_run_control_frame, style='TFrame')
+        self.dir_list_run_button_wrapper.grid(row=0, column=1, sticky="")
+        
+        self.run_dir_list_button = ttk.Button(self.dir_list_run_button_wrapper, text="Export Directory List", command=self._run_directory_list_script, style='TButton')
+        self.run_dir_list_button.pack(padx=5, pady=0)
+
+        self.dir_list_progress_wrapper = ttk.Frame(self.dir_list_run_control_frame, style='TFrame')
+        self.dir_list_progress_wrapper.grid(row=0, column=1, sticky="ew")
+        self.dir_list_progress_bar = ttk.Progressbar(self.dir_list_progress_wrapper, orient="horizontal", length=200, mode="determinate")
+        self.dir_list_progress_bar.pack(side="left", fill="x", expand=True, padx=5)
+        self.dir_list_progress_label = ttk.Label(self.dir_list_progress_wrapper, text="", style='TLabel')
+        self.dir_list_progress_label.pack(side="right", padx=5)
+        self.dir_list_progress_wrapper.grid_remove()
+
+        row_counter += 1
 
         self.log_wrapper_frame = ttk.Frame(self.master, style='SectionFrame.TFrame')
         self.log_wrapper_frame.grid(row=2, column=0, padx=10, pady=5, sticky="nsew")  
@@ -3039,10 +3180,93 @@ class RenamerApp:
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
 
 
+# --- STANDALONE FUNCTION: Directory List Exporter ---
+# This function can be called directly or from the GUI.
+def export_directory_list_to_csv(directory_path, progress_callback=None):
+    """
+    Exports a list of files in the specified directory to a CSV file in the user's Downloads folder.
+    Each row contains the full file path and the filename.
+
+    Parameters:
+        directory_path (str): The path to the directory.
+        progress_callback (callable, optional): A function (value, total) to call for progress updates.
+    Returns:
+        tuple: (success (bool), output_message (str), output_csv_path (str))
+    """
+    if not os.path.isdir(directory_path):
+        return False, f"Error: Directory not found at '{directory_path}'", None
+
+    try:
+        # Get current timestamp
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        # Define the output CSV file path in the Downloads folder
+        output_csv_filename = f"Directory_List_{timestamp}.csv"
+        output_csv_path = os.path.join(os.path.expanduser('~'), 'Downloads', output_csv_filename)
+        
+        # Ensure the Downloads directory exists
+        os.makedirs(os.path.dirname(output_csv_path), exist_ok=True)
+
+        all_files = []
+        for root, _, files in os.walk(directory_path):
+            for filename in files:
+                all_files.append(os.path.join(root, filename))
+        
+        total_files = len(all_files)
+        processed_files = 0
+
+        with open(output_csv_path, mode='w', newline='', encoding='utf-8') as file:
+            writer = csv.writer(file)
+            writer.writerow(["Full Path", "Filename"])  # Write the header
+
+            for full_path in all_files:
+                filename = os.path.basename(full_path)
+                writer.writerow([full_path, filename])
+                processed_files += 1
+                if progress_callback:
+                    progress_callback(processed_files, total_files)
+
+        return True, f"Directory list has been exported to: {output_csv_path}", output_csv_path
+
+    except Exception as e:
+        return False, f"An error occurred during directory listing: {e}", None
+
+
 if __name__ == "__main__":
+    # --- Check for CLI Arguments for Directory List Script ---
+    if len(sys.argv) > 1 and sys.argv[1] == "--dir_list":
+        # Example of running the directory list script without GUI
+        print("Running Directory List Exporter in CLI mode.")
+        if len(sys.argv) > 2:
+            cli_dir_path = sys.argv[2]
+        else:
+            cli_dir_path = input("Enter the directory path to list: ")
+
+        def cli_progress_callback(value, total):
+            # Simple CLI progress update
+            if total > 0:
+                percent = (value / total) * 100
+                sys.stdout.write(f"\rPROGRESS: {percent:.1f}% ({value}/{total})")
+                sys.stdout.flush()
+            else:
+                sys.stdout.write(f"\rPROGRESS: {'Finished (No files found or progress not applicable)'}")
+                sys.stdout.flush()
+
+
+        success, message, csv_path = export_directory_list_to_csv(cli_dir_path, progress_callback=cli_progress_callback)
+        sys.stdout.write("\n") # New line after progress bar
+
+        if success:
+            print(f"Success: {message}")
+        else:
+            print(f"Error: {message}", file=sys.stderr)
+        sys.exit(0) # Exit after CLI operation
+
+    # --- Run GUI if no specific CLI arguments are provided ---
     root = tk.Tk()
     app = RenamerApp(root)
 
+    # Note: The "Created By" label should be part of the main app's layout,
+    # but since it's currently outside, ensure it's still themed.
     creator_frame = ttk.Frame(root, style='TFrame')
     creator_frame.grid(row=3, column=0, sticky="se", padx=10, pady=5)
     creator_label = ttk.Label(creator_frame, text="Created By: Zachary Eisele", font=("Arial", 8), foreground="#888888", background=root.cget('bg'))

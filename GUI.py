@@ -67,8 +67,7 @@ SCRIPT_FILENAMES = {
     "Move Files from Spreadsheet": "move_filename.py",
     "OR Boolean Search Creator": "or.py",
     "Clear Metadata Script": "clear_metadata.py",
-    # NEW: Add the directory list script if it were a separate file
-    # "Directory List Exporter": "directory_list_exporter.py",
+    "Directory List Exporter": "dir_list.py",
 }
 
 # NEW: GitHub URLs for Python scripts
@@ -91,7 +90,7 @@ GITHUB_SCRIPT_URLS = {
     "move_filename.py": GITHUB_RAW_BASE_URL + "move_filename.py",
     "or.py": GITHUB_RAW_BASE_URL + "or.py",
     "clear_metadata.py": GITHUB_RAW_BASE_URL + "clear_metadata.py",
-    # "directory_list_exporter.py": GITHUB_RAW_BASE_URL + "directory_list_exporter.py", # If this were a separate file
+    "dir_list.py": GITHUB_RAW_BASE_URL + "dir_list.py",
 }
 
 RENAMER_EXCEL_URL = "https://www.bynder.raymourflanigan.com/m/333617bb041ff764/original/renaminator.xlsx"

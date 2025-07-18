@@ -518,58 +518,10 @@ class RenamerApp:
 
     def _save_configuration(self):
         config_data = {
-            "theme": self.current_theme.get(),
             "scripts_root_folder": self.scripts_root_folder.get(),
+            "theme": self.current_theme.get(),
             "last_update": self.last_update_timestamp.get(),
             "gui_last_update": self.gui_last_update_timestamp.get(),
-            "check_psa_sku_spreadsheet_path": self.check_psa_sku_spreadsheet_path.get(),
-            "download_psa_sku_spreadsheet_path": self.download_psa_sku_spreadsheet_path.get(),
-            "get_measurements_sku_spreadsheet_path": self.get_measurements_sku_spreadsheet_path.get(),
-            "bynder_metadata_csv_path": self.bynder_metadata_csv_path.get(),
-            "move_files_source_folder": self.move_files_source_folder.get(),
-            "move_files_destination_folder": self.move_files_destination_folder.get(),
-            "move_files_excel_path": self.move_files_excel_path.get(),
-            "or_boolean_input_type": self.or_boolean_input_type.get(),
-            "or_boolean_spreadsheet_path": self.or_boolean_spreadsheet_path.get(),
-            "source_type": self.source_type.get(),
-            "master_matrix_path": self.master_matrix_path.get(),
-            "rename_input_folder": self.rename_input_folder.get(),
-            "vendor_code": self.vendor_code.get(),
-            "inline_source_folder": self.inline_source_folder.get(),
-            "inline_matrix_path": self.inline_matrix_path.get(),
-            "inline_output_folder": self.inline_output_folder.get(),
-            "pso1_matrix_path": self.pso1_matrix_path.get(),
-            "pso1_output_folder": self.pso1_output_folder.get(),
-            "pso2_network_folder": self.pso2_network_folder.get(),
-            "pso2_matrix_path": self.pso2_matrix_path.get(),
-            "pso2_output_folder": self.pso2_output_folder.get(),
-            "prep_input_path": self.prep_input_path.get(),
-            "bynder_assets_folder": self.bynder_assets_folder.get(),
-            "download_psa_output_folder": self.download_psa_output_folder.get(),
-            "download_psa_grid": self.download_psa_grid.get(),
-            "download_psa_100": self.download_psa_100.get(),
-            "download_psa_200": self.download_psa_200.get(),
-            "download_psa_300": self.download_psa_300.get(),
-            "download_psa_400": self.download_psa_400.get(),
-            "download_psa_500": self.download_psa_500.get(),
-            "download_psa_600": self.download_psa_600.get(),
-            "download_psa_700": self.download_psa_700.get(),
-            "download_psa_800": self.download_psa_800.get(),
-            "download_psa_900": self.download_psa_900.get(),
-            "download_psa_1000": self.download_psa_1000.get(),
-            "download_psa_1100": self.download_psa_1100.get(),
-            "download_psa_1200": self.download_psa_1200.get(),
-            "download_psa_dimension": self.download_psa_dimension.get(),
-            "download_psa_swatch": self.download_psa_swatch.get(),
-            "download_psa_5000": self.download_psa_5000.get(),
-            "download_psa_5100": self.download_psa_5100.get(),
-            "download_psa_5200": self.download_psa_5200.get(),
-            "download_psa_5300": self.download_psa_5300.get(),
-            "download_psa_squareThumbnail": self.download_psa_squareThumbnail.get(),
-            "check_psa_input_type": self.check_psa_input_type.get(),
-            "download_psa_input_type": self.download_psa_input_type.get(),
-            "get_measurements_input_type": self.get_measurements_input_type.get(),
-            "move_files_input_type": self.move_files_input_type.get(),
         }
         try:
             with open(CONFIG_FILE, 'w') as f:
@@ -585,81 +537,17 @@ class RenamerApp:
                 with open(CONFIG_FILE, 'r') as f:
                     config_data = json.load(f)
                 
+                # --- ONLY LOAD THESE FOUR ITEMS ---
                 self.scripts_root_folder.set(config_data.get("scripts_root_folder", os.path.dirname(os.path.abspath(__file__))))
+                
                 loaded_theme = config_data.get("theme", "Light")
                 self.current_theme.set(loaded_theme)
                 self._apply_theme(loaded_theme)
 
-                last_update_from_config = config_data.get("last_update", "Last update: Never")
-                if not last_update_from_config.startswith("Last update:"):
-                    self.last_update_timestamp.set(f"Last update: {last_update_from_config}")
-                else:
-                    self.last_update_timestamp.set(last_update_from_config)
+                self.last_update_timestamp.set(config_data.get("last_update", "Last update: Never"))
+                self.gui_last_update_timestamp.set(config_data.get("gui_last_update", "Last GUI update: Never"))
 
-                gui_last_update_from_config = config_data.get("gui_last_update", "Last GUI update: Never")
-                if not gui_last_update_from_config.startswith("Last GUI update:"):
-                    self.gui_last_update_timestamp.set(f"Last GUI update: {gui_last_update_from_config}")
-                else:
-                    self.gui_last_update_timestamp.set(gui_last_update_from_config)
-
-                # --- MODIFIED: Clear Metadata settings are NOT loaded ---
-                # They are explicitly reset below after this load call.
-                # self.clear_metadata_input_folder.set(config_data.get("clear_metadata_input_folder", ""))
-                # loaded_clear_metadata_settings = config_data.get("clear_metadata_settings", {})
-                # for prop, var in self.clear_metadata_checkbox_vars.items():
-                #   var.set(loaded_clear_metadata_settings.get(prop, False))
-
-                # Load other variables (keep loading these)
-                self.check_psa_sku_spreadsheet_path.set(config_data.get("check_psa_sku_spreadsheet_path", ""))
-                self.download_psa_sku_spreadsheet_path.set(config_data.get("download_psa_sku_spreadsheet_path", ""))
-                self.get_measurements_sku_spreadsheet_path.set(config_data.get("get_measurements_sku_spreadsheet_path", ""))
-                self.bynder_metadata_csv_path.set(config_data.get("bynder_metadata_csv_path", ""))
-                self.move_files_source_folder.set(config_data.get("move_files_source_folder", ""))
-                self.move_files_destination_folder.set(config_data.get("move_files_destination_folder", ""))
-                self.move_files_excel_path.set(config_data.get("move_files_excel_path", ""))
-                self.or_boolean_input_type.set(config_data.get("or_boolean_input_type", "spreadsheet"))
-                self.or_boolean_spreadsheet_path.set(config_data.get("or_boolean_spreadsheet_path", ""))
-                self.source_type.set(config_data.get("source_type", "inline"))
-                self.master_matrix_path.set(config_data.get("master_matrix_path", ""))
-                self.rename_input_folder.set(config_data.get("rename_input_folder", ""))
-                self.vendor_code.set(config_data.get("vendor_code", ""))
-                self.inline_source_folder.set(config_data.get("inline_source_folder", ""))
-                self.inline_matrix_path.set(config_data.get("inline_matrix_path", ""))
-                self.inline_output_folder.set(config_data.get("inline_output_folder", ""))
-                self.pso1_matrix_path.set(config_data.get("pso1_matrix_path", ""))
-                self.pso1_output_folder.set(config_data.get("pso1_output_folder", ""))
-                self.pso2_network_folder.set(config_data.get("pso2_network_folder", ""))
-                self.pso2_matrix_path.set(config_data.get("pso2_matrix_path", ""))
-                self.pso2_output_folder.set(config_data.get("pso2_output_folder", ""))
-                self.prep_input_path.set(config_data.get("prep_input_path", ""))
-                self.bynder_assets_folder.set(config_data.get("bynder_assets_folder", ""))
-                self.download_psa_output_folder.set(config_data.get("download_psa_output_folder", ""))
-                self.download_psa_grid.set(config_data.get("download_psa_grid", False))
-                self.download_psa_100.set(config_data.get("download_psa_100", False))
-                self.download_psa_200.set(config_data.get("download_psa_200", False))
-                self.download_psa_300.set(config_data.get("download_psa_300", False))
-                self.download_psa_400.set(config_data.get("download_psa_400", False))
-                self.download_psa_500.set(config_data.get("download_psa_500", False))
-                self.download_psa_600.set(config_data.get("download_psa_600", False))
-                self.download_psa_700.set(config_data.get("download_psa_700", False))
-                self.download_psa_800.set(config_data.get("download_psa_800", False))
-                self.download_psa_900.set(config_data.get("download_psa_900", False))
-                self.download_psa_1000.set(config_data.get("download_psa_1000", False))
-                self.download_psa_1100.set(config_data.get("download_psa_1100", False))
-                self.download_psa_1200.set(config_data.get("download_psa_1200", False))
-                self.download_psa_dimension.set(config_data.get("download_psa_dimension", False))
-                self.download_psa_swatch.set(config_data.get("download_psa_swatch", False))
-                self.download_psa_5000.set(config_data.get("download_psa_5000", False))
-                self.download_psa_5100.set(config_data.get("download_psa_5100", False))
-                self.download_psa_5200.set(config_data.get("download_psa_5200", False))
-                self.download_psa_5300.set(config_data.get("download_psa_5300", False))
-                self.download_psa_squareThumbnail.set(config_data.get("download_psa_squareThumbnail", False))
-                self.check_psa_input_type.set(config_data.get("check_psa_input_type", "spreadsheet"))
-                self.download_psa_input_type.set(config_data.get("download_psa_input_type", "spreadsheet"))
-                self.get_measurements_input_type.set(config_data.get("get_measurements_input_type", "spreadsheet"))
-                self.move_files_input_type.set(config_data.get("move_files_input_type", "spreadsheet"))
-
-                self.log_print("Configuration loaded successfully.\n")
+                self.log_print("Core configuration loaded successfully.\n")
             except json.JSONDecodeError as e:
                 self.log_print(f"Error reading configuration file (JSON format issue): {e}\n")
             except Exception as e:

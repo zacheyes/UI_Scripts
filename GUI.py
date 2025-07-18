@@ -13,6 +13,7 @@ import threading
 import pandas as pd
 import tempfile
 import zipfile
+import stat
 import csv # Import csv for the directory list script
 
 # --- Configuration ---
@@ -37,7 +38,7 @@ EXIFTOOL_PC_BUNDLE_URL = GITHUB_RAW_BASE_URL + EXIFTOOL_PC_BUNDLE_FILENAME
 # ADJUST THIS: Name of the root folder *inside* exiftool_PC_bundle.zip when extracted.
 # E.g., if you zipped 'exiftool_PC' folder, this would be 'exiftool_PC/'.
 # If you zipped the *contents* of 'exiftool_PC' directly, this would be ''.
-EXIFTOOL_PC_BUNDLE_INTERNAL_ROOT_DIR = "exiftool_PC/" # <<< EXAMPLE! ADJUST THIS TO MATCH YOUR ZIP'S INTERNAL FOLDER NAME OR ""!
+EXIFTOOL_PC_BUNDLE_INTERNAL_ROOT_DIR = "exiftool_PC/"
 
 # ExifTool for Mac/Linux (Perl script + lib folder)
 EXIFTOOL_MAC_BUNDLE_FILENAME = "exiftool_MAC_bundle.zip"
@@ -45,7 +46,7 @@ EXIFTOOL_MAC_BUNDLE_URL = GITHUB_RAW_BASE_URL + EXIFTOOL_MAC_BUNDLE_FILENAME
 # ADJUST THIS: Name of the root folder *inside* exiftool_MAC_bundle.zip when extracted.
 # E.g., if you zipped 'exiftool_MAC' folder, this would be 'exiftool_MAC/'.
 # If you zipped the *contents* of 'exiftool_MAC' directly, this would be ''.
-EXIFTOOL_MAC_BUNDLE_INTERNAL_ROOT_DIR = "exiftool_MAC/" # <<< EXAMPLE! ADJUST THIS TO MATCH YOUR ZIP'S INTERNAL FOLDER NAME OR ""!
+EXIFTOOL_MAC_BUNDLE_INTERNAL_ROOT_DIR = "exiftool_MAC/" 
 
 
 SCRIPT_FILENAMES = {
@@ -67,8 +68,10 @@ SCRIPT_FILENAMES = {
     "Move Files from Spreadsheet": "move_filename.py",
     "OR Boolean Search Creator": "or.py",
     "Clear Metadata Script": "clear_metadata.py",
-    # NEW: Add the directory list script if it were a separate file
-    # "Directory List Exporter": "directory_list_exporter.py",
+    "Directory List Exporter": "dir_list.py",
+    "Windows Launcher": "launcher.bat",
+    "Mac Launcher": "launcher.zip",
+    
 }
 
 # NEW: GitHub URLs for Python scripts
@@ -91,7 +94,9 @@ GITHUB_SCRIPT_URLS = {
     "move_filename.py": GITHUB_RAW_BASE_URL + "move_filename.py",
     "or.py": GITHUB_RAW_BASE_URL + "or.py",
     "clear_metadata.py": GITHUB_RAW_BASE_URL + "clear_metadata.py",
-    # "directory_list_exporter.py": GITHUB_RAW_BASE_URL + "directory_list_exporter.py", # If this were a separate file
+    "dir_list.py": GITHUB_RAW_BASE_URL + "dir_list.py",
+    "launcher.bat": GITHUB_RAW_BASE_URL + "launcher.bat",
+    "launcher.zip": GITHUB_RAW_BASE_URL + "launcher.zip",
 }
 
 RENAMER_EXCEL_URL = "https://www.bynder.raymourflanigan.com/m/333617bb041ff764/original/renaminator.xlsx"
@@ -945,6 +950,32 @@ class RenamerApp:
             os.makedirs(directory)
             self.log_print(f"  Created directory: {directory}")
 
+    def _extract_and_permission_launcher(self, zip_path, extract_folder):
+        """Extracts the launcher.zip and sets permissions on launcher.command."""
+        self.log_print(f"  Processing '{os.path.basename(zip_path)}'...")
+        try:
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                self.log_print(f"  Extracting all contents from '{os.path.basename(zip_path)}'...")
+                zip_ref.extractall(extract_folder)
+                self.log_print(f"  Successfully extracted to '{extract_folder}'.")
+
+            # Set execute permissions on the extracted launcher.command
+            extracted_sh_path = os.path.join(extract_folder, "launcher.command")
+            if os.path.exists(extracted_sh_path):
+                st = os.stat(extracted_sh_path)
+                # Sets permissions to rwxr-xr-x
+                os.chmod(extracted_sh_path, st.st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
+                self.log_print(f"  Set execute permissions for 'launcher.command'.\n")
+            else:
+                self.log_print(f"  WARNING: 'launcher.command' not found after extraction. Check the zip file.\n", is_stderr=True)
+        
+        except zipfile.BadZipFile:
+            self.log_print(f"  ERROR: '{os.path.basename(zip_path)}' is not a valid zip file.\n", is_stderr=True)
+        except Exception as e:
+            self.log_print(f"  ERROR processing launcher zip: {e}\n", is_stderr=True)
+
+
+    # REPLACE the old _download_and_compare_file function with this one
     def _download_and_compare_file(self, display_name, filename, download_url, local_target_folder):
         local_full_path = os.path.join(local_target_folder, filename)
         temp_file_path = local_full_path + ".tmp"
@@ -957,37 +988,45 @@ class RenamerApp:
             response = requests.get(download_url, stream=True)
             response.raise_for_status()
 
-            self._ensure_dir(local_full_path)  
+            self._ensure_dir(local_full_path)
 
             with open(temp_file_path, "wb") as f:
                 for chunk in response.iter_content(chunk_size=8192):
                     f.write(chunk)
 
-            if os.path.exists(local_full_path):
-                if filecmp.cmp(local_full_path, temp_file_path, shallow=False):
-                    self.log_print(f"  '{filename}' is already up to date. No action needed.\n")
-                    os.remove(temp_file_path)
-                    return "skipped"
+            # Check if the downloaded file is identical to the local one
+            if os.path.exists(local_full_path) and filecmp.cmp(local_full_path, temp_file_path, shallow=False):
+                self.log_print(f"  '{filename}' is already up to date. No action needed.")
+                os.remove(temp_file_path)
+                # EVEN IF SKIPPED: For Mac launcher, ensure it's extracted and executable.
+                if filename == "launcher.zip" and sys.platform == "darwin":
+                    self._extract_and_permission_launcher(local_full_path, local_target_folder)
                 else:
-                    self.log_print(f"  New version of '{filename}' found. Updating...")
-                    shutil.move(temp_file_path, local_full_path)
-                    self.log_print(f"  '{filename}' updated successfully!\n")
-                    return "updated"
+                    self.log_print("\n")
+                return "skipped"
+            
+            # If new or updated, replace the local file
+            status = "updated" if os.path.exists(local_full_path) else "downloaded"
+            self.log_print(f"  New version of '{filename}' found. {status.capitalize()}...")
+            
+            shutil.move(temp_file_path, local_full_path)
+            self.log_print(f"  '{filename}' {status} successfully!")
+
+            # If it's the Mac launcher zip, extract it and set permissions.
+            if filename == "launcher.zip" and sys.platform == "darwin":
+                self._extract_and_permission_launcher(local_full_path, local_target_folder)
             else:
-                self.log_print(f"  '{filename}' not found locally. Downloading new script...")
-                shutil.move(temp_file_path, local_full_path)
-                self.log_print(f"  '{filename}' downloaded successfully!\n")
-                return "downloaded"
+                self.log_print("\n")
+
+            return status
 
         except requests.exceptions.RequestException as e:
-            self.log_print(f"  ERROR downloading '{filename}' from '{download_url}': {e}\n", is_stderr=True)
-            if os.path.exists(temp_file_path):
-                os.remove(temp_file_path)
+            self.log_print(f"  ERROR downloading '{filename}': {e}\n", is_stderr=True)
+            if os.path.exists(temp_file_path): os.remove(temp_file_path)
             return "error"
         except Exception as e:
             self.log_print(f"  An unexpected ERROR occurred while updating '{filename}': {e}\n", is_stderr=True)
-            if os.path.exists(temp_file_path):
-                os.remove(temp_file_path)
+            if os.path.exists(temp_file_path): os.remove(temp_file_path)
             return "error"
 
     # NEW: Generic function to download and extract a tool bundle
@@ -1077,6 +1116,7 @@ class RenamerApp:
                     self.log_print(f"Warning: Could not remove temporary zip file: {e}", is_stderr=True)
 
 
+    # REPLACE the old _update_all_scripts function with this one
     def _update_all_scripts(self):
         scripts_folder = self.scripts_root_folder.get()
         if not scripts_folder or not os.path.isdir(scripts_folder):
@@ -1087,95 +1127,82 @@ class RenamerApp:
         self.log_print("\n--- Starting All Scripts Update Process ---")
         self.log_print(f"Using scripts root folder: {scripts_folder}\n")
 
-        updated_count = 0
-        downloaded_count = 0
-        skipped_count = 0
-        error_count = 0
-        total_checked = 0
+        updated_count, downloaded_count, skipped_count, error_count = 0, 0, 0, 0
 
-        # Phase 1: Update Python scripts
-        self.log_print("\n--- Phase 1: Updating Python scripts ---")
+        # --- Phase 1: Update Python scripts & Launchers ---
+        self.log_print("\n--- Phase 1: Updating Python scripts & Launchers ---")
+        
+        files_to_check = {}
         for display_name, filename in SCRIPT_FILENAMES.items():
-            if filename.endswith(".py") and filename in GITHUB_SCRIPT_URLS:
-                total_checked += 1
+            is_launcher = "launcher" in filename.lower()
+            # If it's not a launcher, or a non-Python file like the template, always add it
+            if not is_launcher or filename.endswith(".xlsx"):
+                files_to_check[display_name] = filename
+            # If it IS a launcher, check the platform
+            else:
+                if sys.platform == "win32" and filename.endswith(".bat"):
+                    files_to_check[display_name] = filename
+                elif sys.platform == "darwin" and filename.endswith(".zip"):
+                    files_to_check[display_name] = filename
+        
+        self.log_print(f"Platform '{sys.platform}' detected. Checking relevant files...\n")
+        
+        for display_name, filename in files_to_check.items():
+            if filename in GITHUB_SCRIPT_URLS:
                 github_url = GITHUB_SCRIPT_URLS[filename]
-                
                 status = self._download_and_compare_file(display_name, filename, github_url, scripts_folder)
                 
-                if status == "updated":
-                    updated_count += 1
-                elif status == "downloaded":
-                    downloaded_count += 1
-                elif status == "skipped":
-                    skipped_count += 1
-                elif status == "error":
-                    error_count += 1
+                if status == "updated": updated_count += 1
+                elif status == "downloaded": downloaded_count += 1
+                elif status == "skipped": skipped_count += 1
+                elif status == "error": error_count += 1
         
         self.log_print("\n--- Phase 1 Complete ---")
-        self.log_print(f"Python scripts: Updated={updated_count}, Downloaded={downloaded_count}, Skipped={skipped_count}, Errors={error_count}\n")
+        self.log_print(f"Scripts/Launchers: Updated={updated_count}, Downloaded={downloaded_count}, Skipped={skipped_count}, Errors={error_count}\n")
 
-
-        # Phase 2: Check and download ExifTool bundle based on OS
+        # --- Phase 2: Check and download ExifTool bundle based on OS ---
         self.log_print("\n--- Phase 2: Checking ExifTool Bundle ---")
         
-        exiftool_bundle_status = "skipped" # Default status for ExifTool check
-
         if sys.platform == "win32":
-            target_sub_folder = "exiftool_PC"
-            executable_filename = "exiftool.exe"
-            bundle_url = EXIFTOOL_PC_BUNDLE_URL
-            bundle_filename = EXIFTOOL_PC_BUNDLE_FILENAME
-            bundle_internal_root_dir = EXIFTOOL_PC_BUNDLE_INTERNAL_ROOT_DIR
-        elif sys.platform == "darwin" or sys.platform.startswith("linux"): # macOS or Linux
-            target_sub_folder = "exiftool_MAC"
-            executable_filename = "exiftool"
-            bundle_url = EXIFTOOL_MAC_BUNDLE_URL
-            bundle_filename = EXIFTOOL_MAC_BUNDLE_FILENAME
-            bundle_internal_root_dir = EXIFTOOL_MAC_BUNDLE_INTERNAL_ROOT_DIR
+            target_sub, exec_file, bundle_url, bundle_file, internal_dir = "exiftool_PC", "exiftool.exe", EXIFTOOL_PC_BUNDLE_URL, EXIFTOOL_PC_BUNDLE_FILENAME, EXIFTOOL_PC_BUNDLE_INTERNAL_ROOT_DIR
+        elif sys.platform == "darwin" or sys.platform.startswith("linux"):
+            target_sub, exec_file, bundle_url, bundle_file, internal_dir = "exiftool_MAC", "exiftool", EXIFTOOL_MAC_BUNDLE_URL, EXIFTOOL_MAC_BUNDLE_FILENAME, EXIFTOOL_MAC_BUNDLE_INTERNAL_ROOT_DIR
         else:
-            self.log_print(f"Unsupported operating system: {sys.platform}. Cannot check for ExifTool bundle.", is_stderr=True)
+            self.log_print(f"Unsupported OS: {sys.platform}. Cannot check for ExifTool bundle.", is_stderr=True)
             error_count += 1
-            exiftool_bundle_status = "error" # Set status and skip
-        
-        # Only proceed with ExifTool check/download if OS is supported
-        if exiftool_bundle_status != "error":
-            exiftool_local_path = os.path.join(scripts_folder, "tools", target_sub_folder, executable_filename)
-            
+            target_sub = None # Skip the check
+
+        if target_sub:
+            exiftool_local_path = os.path.join(scripts_folder, "tools", target_sub, exec_file)
             if not os.path.exists(exiftool_local_path):
-                self.log_print(f"ExifTool executable ('{executable_filename}') not found in '{target_sub_folder}' location. Attempting to download bundle...")
-                # Call the generic download and extract function
-                bundle_status = self._download_and_extract_tool_bundle(bundle_filename, bundle_url, bundle_internal_root_dir, target_sub_folder)
-                
+                self.log_print(f"ExifTool ('{exec_file}') not found. Attempting download...")
+                bundle_status = self._download_and_extract_tool_bundle(bundle_file, bundle_url, internal_dir, target_sub)
                 if bundle_status == "downloaded":
-                    self.log_print("ExifTool bundle successfully downloaded and extracted.", is_stderr=False)
-                    downloaded_count += 1 # Count ExifTool as a download
-                else: # bundle_status is "error"
-                    self.log_print("Failed to download or extract ExifTool bundle. Manual setup may be required.", is_stderr=True)
+                    self.log_print("ExifTool bundle successfully downloaded and extracted.")
+                    downloaded_count += 1
+                else:
+                    self.log_print("Failed to download or extract ExifTool bundle.", is_stderr=True)
                     error_count += 1
             else:
-                self.log_print(f"ExifTool bundle ('{executable_filename}') already found locally. Skipping download.", is_stderr=False)
-                skipped_count += 1 # Count ExifTool as skipped if already present
+                self.log_print(f"ExifTool ('{exec_file}') already found. Skipping download.")
+                skipped_count += 1
 
-
+        # --- Final Summary ---
         self.log_print("\n--- All Update Processes Complete ---")
         
-        summary_message_parts = []
-        if updated_count > 0:
-            summary_message_parts.append(f"Updated {updated_count} script(s).")
-        if downloaded_count > 0:
-            summary_message_parts.append(f"Newly downloaded {downloaded_count} item(s) (scripts/tools).")
-        if skipped_count > 0:
-            summary_message_parts.append(f"{skipped_count} item(s) were already up to date.")
-        if error_count > 0:
-            summary_message_parts.append(f"{error_count} item(s) encountered errors. Check log for details.")
+        summary_parts = []
+        if updated_count > 0: summary_parts.append(f"Updated {updated_count} item(s).")
+        if downloaded_count > 0: summary_parts.append(f"Newly downloaded {downloaded_count} item(s).")
+        if skipped_count > 0: summary_parts.append(f"{skipped_count} item(s) were already up to date.")
+        if error_count > 0: summary_parts.append(f"{error_count} item(s) encountered errors.")
 
-        if summary_message_parts:
-            summary_message = "\n".join(summary_message_parts)
-            current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")  
-            self.last_update_timestamp.set(f"Last update: {current_time}")  
-            messagebox.showinfo("Update Complete", f"Update summary:\n{summary_message}\n\nCheck the Activity Log for full details.")
+        if summary_parts:
+            summary_message = "\n".join(summary_parts)
+            current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            self.last_update_timestamp.set(f"Last update: {current_time}")
+            messagebox.showinfo("Update Complete", f"Update summary:\n{summary_message}\n\nCheck the Activity Log for details.")
         else:
-            messagebox.showinfo("Update Complete", "No updates found, or no items to check. All local items are up to date.")
+            messagebox.showinfo("Update Complete", "No updates found or no items to check.")
             
         self._save_configuration()
 

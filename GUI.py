@@ -476,7 +476,6 @@ class RenamerApp:
             "Headline": tk.BooleanVar(value=False),
             "ObjectName": tk.BooleanVar(value=False),
             "Event": tk.BooleanVar(value=False),
-            "'Generated Image' in Title": tk.BooleanVar(value=False),
         }
 
         # NEW: Variable for Directory List tool
@@ -1997,53 +1996,6 @@ class RenamerApp:
         for var in self.clear_metadata_checkbox_vars.values():
             var.set(False)
 
-    def _run_clear_metadata_aggressive_script(self):
-        scripts_folder = self.scripts_root_folder.get()
-        clear_metadata_script_name = SCRIPT_FILENAMES["Clear Metadata Script"]
-        clear_metadata_script_path = os.path.join(scripts_folder, clear_metadata_script_name)
-
-        input_folder = self.clear_metadata_input_folder.get()
-
-        if not os.path.exists(clear_metadata_script_path):
-            messagebox.showerror("Error", f"Clear Metadata script not found: {clear_metadata_script_path}")
-            return
-        if not input_folder or not os.path.isdir(input_folder):
-            messagebox.showerror("Input Error", "Please select a valid Input Folder.")
-            return
-
-        # Confirmation Dialog for this destructive action
-        response = messagebox.askyesno(
-            "Confirm Destructive Action",
-            "WARNING: You are about to strip ALL metadata (except the color profile) from every image in the selected folder.\n\nThis action is irreversible and should only be used to remove stubborn metadata.\n\nDo you want to proceed?",
-            icon='warning'
-        )
-        if not response:
-            self.log_print("Aggressive metadata strip cancelled by user.\n")
-            return
-
-        self.log_print(f"\n--- Running AGGRESSIVE Clear Metadata Script ({clear_metadata_script_name}) ---")
-        self.log_print(f"Input Folder: {input_folder}")
-        self.log_print("Mode: --strip_ai_metadata (Overrides all checkbox selections)")
-
-        args = ["--input_folder", input_folder, "--strip_ai_metadata"]
-
-        def aggressive_clear_success_callback(output):
-            self.run_clear_metadata_aggressive_button.config(state='normal')
-            messagebox.showinfo("Success", "Aggressive metadata strip completed successfully!")
-        
-        def aggressive_clear_error_callback(output):
-            self.run_clear_metadata_aggressive_button.config(state='normal')
-            messagebox.showerror("Error", "Aggressive metadata strip failed. Please check the log for details.")
-
-        self.run_clear_metadata_aggressive_button.config(state='disabled')
-
-        run_script_wrapper(clear_metadata_script_path, True, args, self.log_text,
-                               self.clear_metadata_progress_bar, self.clear_metadata_progress_label,
-                               self.clear_metadata_run_button_wrapper,
-                               self.clear_metadata_progress_wrapper,
-                               aggressive_clear_success_callback, aggressive_clear_error_callback,
-                               initial_progress_text="Stripping All Metadata...")
-
     # --- NEW: Directory List Functions ---
     def _run_directory_list_script(self):
         directory_path = self.dir_list_folder_path.get()
@@ -3024,12 +2976,8 @@ class RenamerApp:
         self.clear_metadata_run_button_wrapper = ttk.Frame(self.clear_metadata_run_control_frame, style='TFrame')
         self.clear_metadata_run_button_wrapper.grid(row=0, column=1, sticky="")
         
-        self.run_clear_metadata_button = ttk.Button(self.clear_metadata_run_button_wrapper, text="Clear Selected Metadata", command=self._run_clear_metadata_script, style='TButton')
-        self.run_clear_metadata_button.pack(padx=5, pady=0, side="left")
-
-        self.run_clear_metadata_aggressive_button = ttk.Button(self.clear_metadata_run_button_wrapper, text="Strip All Metadata (Danger)", command=self._run_clear_metadata_aggressive_script, style='TButton')
-        self.run_clear_metadata_aggressive_button.pack(padx=5, pady=0, side="left")
-        Tooltip(self.run_clear_metadata_aggressive_button, "DANGER: Removes ALL metadata except the ICC color profile. This is a powerful, destructive option for removing stubborn metadata in files. Overrides all checkbox selections.", self.secondary_bg, self.text_color)
+        self.run_clear_metadata_button = ttk.Button(self.clear_metadata_run_button_wrapper, text="Run Clear Metadata", command=self._run_clear_metadata_script, style='TButton')
+        self.run_clear_metadata_button.pack(padx=5, pady=0)
 
         self.clear_metadata_progress_wrapper = ttk.Frame(self.clear_metadata_run_control_frame, style='TFrame')
         self.clear_metadata_progress_wrapper.grid(row=0, column=1, sticky="ew")

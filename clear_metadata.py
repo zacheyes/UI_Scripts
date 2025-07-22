@@ -4,95 +4,81 @@ import subprocess
 import sys
 import argparse
 import shutil
-import tkinter as tk # NO LONGER NEEDED FOR THIS SCRIPT'S INTERNAL LOGIC WHEN CALLED WITH ARGS
-from tkinter import filedialog # NO LONGER NEEDED FOR THIS SCRIPT'S INTERNAL LOGIC WHEN CALLED WITH ARGS
+import tkinter as tk
+from tkinter import filedialog
 
 # --- Configuration for Metadata Fields ---
 
-# Mapping of user-friendly names to ExifTool tags.
-# Each value is a single ExifTool tag string.
-# These are the *only* properties the user will be prompted about or
-# can specify via the --clear_properties command-line argument.
+# Mapping of user-friendly names to a list of ExifTool tags.
 METADATA_PROPERTIES = {
-    "Description": "-Description=",
-    "ImageDescription": "-ImageDescription=",
-    "Caption-Abstract": "-Caption-Abstract=",
-    "Keywords": "-Keywords=",
-    "Subject": "-Subject=",
-    "Title": "-Title=",
-    "Headline": "-Headline=",
-    "ObjectName": "-ObjectName=",
-    "Event": "-Event=",
+    "Description": ["-Description="],
+    "ImageDescription": ["-ImageDescription="],
+    "Caption-Abstract": ["-Caption-Abstract="],
+    "Keywords": ["-Keywords="],
+    "Subject": ["-Subject="],
+    "Title": ["-Title=", "-DocumentTitle="],
+    "'Generated Image' in Title": ["-JUMBF:all=", "-XMP-xmpMM:History="],
+    "Headline": ["-Headline="],
+    "ObjectName": ["-ObjectName="],
+    "Event": ["-Event="],
 }
 
+# --- Special command for aggressive stripping ---
+AGGRESSIVE_STRIP_FLAG = "--STRIP_ALL_METADATA_EXCEPT_ICC--"
 
 def get_exiftool_executable_path():
     """
-    Attempts to find the ExifTool executable.
-    1. Checks a local 'tools/exiftool' directory (for bundled/portable distribution).
-    2. Checks if 'exiftool' is in the system's PATH.
-    Returns the full path to the executable, or None if not found.
+    Finds the correct ExifTool executable based on the operating system.
     """
-    # Path relative to the script's directory
     script_dir = os.path.dirname(os.path.abspath(__file__))
-
-    # Check for Windows executable (exiftool.exe)
-    portable_windows_path = os.path.join(script_dir, 'tools', 'exiftool_PC', 'exiftool.exe')
-    if os.path.exists(portable_windows_path) and os.path.isfile(portable_windows_path):
-        return portable_windows_path
     
-    # Check for Linux/macOS executable (plain 'exiftool' binary/script)
-    # This covers both the Perl script and potential native binaries if you bundled one
-    portable_unix_path = os.path.join(script_dir, 'tools', 'exiftool_MAC', 'exiftool')
-    if os.path.exists(portable_unix_path) and os.path.isfile(portable_unix_path):
-        return portable_unix_path
+    # Check for the OS-specific bundled executable first
+    if sys.platform == "win32":
+        # On Windows, look for exiftool.exe
+        portable_path = os.path.join(script_dir, 'tools', 'exiftool_PC', 'exiftool.exe')
+        if os.path.exists(portable_path):
+            return portable_path
+    elif sys.platform == "darwin":
+        # On macOS, look for the Unix executable
+        portable_path = os.path.join(script_dir, 'tools', 'exiftool_MAC', 'exiftool')
+        if os.path.exists(portable_path):
+            return portable_path
 
-    # If not found in bundled location, check system PATH
-    try:
-        # shutil.which is Python 3.3+ and is the robust way to check PATH
-        exiftool_in_path = shutil.which("exiftool")
-        if exiftool_in_path:
-            return exiftool_in_path
-    except Exception as e:
-        # Fallback for older Python versions or unexpected issues with shutil.which
-        for path_dir in os.environ.get("PATH", "").split(os.pathsep):
-            full_path = os.path.join(path_dir, "exiftool")
-            if os.path.exists(full_path) and os.path.isfile(full_path):
-                return full_path
-            full_path_exe = os.path.join(path_dir, "exiftool.exe") # Windows might have it in PATH too
-            if os.path.exists(full_path_exe) and os.path.isfile(full_path_exe):
-                return full_path_exe
+    # If a bundled version isn't found, check the system PATH
+    exiftool_in_path = shutil.which("exiftool")
+    if exiftool_in_path:
+        return exiftool_in_path
 
     return None # ExifTool not found
 
 
-def clear_metadata_from_image_exiftool(file_path, exiftool_tags_to_clear_final):
+def clear_metadata_from_image_exiftool(file_path, exiftool_args_to_run):
     """
-    Clears specified metadata fields from a single image file using ExifTool.
-    Supports JPEG, PNG, TIFF. Overwrites the original file.
-
-    Args:
-        file_path (str): The path to the image file.
-        exiftool_tags_to_clear_final (list): List of ExifTool tag strings to clear.
+    Clears metadata from a single image file using ExifTool.
     """
     print(f"\n  Processing: {os.path.basename(file_path)}")
     
     exiftool_path = get_exiftool_executable_path()
     if not exiftool_path:
-        sys.stderr.write(f"  Error: ExifTool not found in bundled 'tools/exiftool' directory or system PATH.\n")
-        sys.stderr.write(f"  Please ensure 'exiftool.exe' (Windows) or 'exiftool' (macOS/Linux) is in the '{os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tools', 'exiftool')}' folder, or installed and in your system's PATH.\n")
+        sys.stderr.write(f"  Error: ExifTool not found. Please ensure the correct version is in the 'tools' subdirectory or system PATH.\n")
         sys.stderr.write(f"  Download from: https://exiftool.org/\n")
-        return # Exit function if ExifTool is not found
+        return
 
     print(f"  Using ExifTool from: {exiftool_path}")
 
-    command = [exiftool_path] # Use the found path
+    command = [exiftool_path]
 
-    if not exiftool_tags_to_clear_final:
-        print(f"  No metadata fields selected for clearing for {os.path.basename(file_path)}. Skipping ExifTool operation.")
-        return # Exit function if no tags to clear
+    # Determine command based on arguments
+    if exiftool_args_to_run and exiftool_args_to_run[0] == AGGRESSIVE_STRIP_FLAG:
+        print("  Applying AGGRESSIVE STRIP: Removing all metadata except the ICC Profile...")
+        command.extend(['-all=', '--ICC_Profile'])
+    elif exiftool_args_to_run:
+        print(f"  Clearing standard tags: {', '.join(exiftool_args_to_run)}")
+        command.extend(exiftool_args_to_run)
+    else:
+        print(f"  No metadata fields selected for clearing. Skipping ExifTool operation.")
+        return
 
-    command.extend(exiftool_tags_to_clear_final)
     command.append("-overwrite_original")
     command.append(file_path)
 
@@ -102,10 +88,9 @@ def clear_metadata_from_image_exiftool(file_path, exiftool_tags_to_clear_final):
         print(f"  ExifTool stdout: {process.stdout.strip()}")
         if process.stderr:
             sys.stderr.write(f"  ExifTool stderr: {process.stderr.strip()}\n")
-        print(f"  Metadata processed by ExifTool for: {os.path.basename(file_path)}")
+        print(f"  Successfully processed metadata for: {os.path.basename(file_path)}")
     except subprocess.CalledProcessError as e:
         sys.stderr.write(f"  Error running ExifTool for {os.path.basename(file_path)}: {e}\n")
-        sys.stderr.write(f"  ExifTool stdout: {e.stdout.strip()}\n")
         sys.stderr.write(f"  ExifTool stderr: {e.stderr.strip()}\n")
     except Exception as e:
         sys.stderr.write(f"  An unexpected error occurred for {os.path.basename(file_path)}: {e}\n")
@@ -114,97 +99,96 @@ def clear_metadata_from_image_exiftool(file_path, exiftool_tags_to_clear_final):
 def get_user_choices_interactive():
     """
     Interactively prompts the user for which metadata properties to clear.
-    Returns a list of ExifTool tags that should be cleared based on user input.
     """
     print("\n--- Metadata Configuration (Interactive Mode) ---")
-    print("For each property, do you want to CLEAR it?")
-    print("Type 'y' for YES or 'n' for NO.")
+    print("For each property, do you want to CLEAR it? (y/n)")
     print("-------------------------------------------------")
 
     final_tags_to_clear_exiftool = []
     
-    for prop_display_name, exiftool_tag in METADATA_PROPERTIES.items():
+    # Sort keys for consistent prompting order
+    sorted_prop_keys = sorted(METADATA_PROPERTIES.keys())
+    
+    for prop_display_name in sorted_prop_keys:
+        exiftool_tags = METADATA_PROPERTIES[prop_display_name]
         user_input = ""
         while user_input.lower() not in ['y', 'n']:
-            prompt_text = f"Do you want to CLEAR '{prop_display_name}'? (y/n): "
-            user_input = input(prompt_text).strip().lower()
-
+            user_input = input(f"Clear '{prop_display_name}'? (y/n): ").strip().lower()
             if user_input == 'y':
-                final_tags_to_clear_exiftool.append(exiftool_tag)
+                final_tags_to_clear_exiftool.extend(exiftool_tags)
                 print(f"  -> '{prop_display_name}' will be CLEARED.")
             elif user_input == 'n':
                 print(f"  -> '{prop_display_name}' will be KEPT.")
             else:
-                print("Invalid input. Please type 'y' or 'n'.")
+                print("Invalid input. Please enter 'y' or 'n'.")
     
-    final_tags_to_clear_exiftool = list(set(final_tags_to_clear_exiftool))
-
-    return final_tags_to_clear_exiftool
+    return list(set(final_tags_to_clear_exiftool))
 
 
 def main():
-    # Dynamically build the list of available properties for argparse help text
-    available_properties_str = ", ".join(METADATA_PROPERTIES.keys())
+    sorted_prop_keys = sorted(METADATA_PROPERTIES.keys())
+    available_properties_str = ", ".join(sorted_prop_keys)
 
     parser = argparse.ArgumentParser(
-        description="Clear specific embedded metadata from image files in a folder using ExifTool.\n"
-                    "If --clear_properties is NOT used and --input_folder is NOT used, the script will prompt interactively.",
+        description="Clear specific embedded metadata from image files using ExifTool.",
         formatter_class=argparse.RawTextHelpFormatter
     )
-    # Make input_folder optional, but expected if not interactive
     parser.add_argument("--input_folder", help="Path to the folder containing image files.")
     parser.add_argument("--clear_properties", nargs='*',
-                        help=f"Optional: Space-separated list of metadata properties to CLEAR. "
-                             f"Options (case-sensitive as listed): {available_properties_str}. "
-                             f"If this argument is provided, the script will NOT prompt interactively for metadata; "
-                             f"only the specified properties will be cleared, others will be kept.")
-
+                        help=f"Space-separated list of metadata properties to clear.\n"
+                             f"Options: {available_properties_str}.\n"
+                             f"If used, script runs non-interactively.")
+    parser.add_argument("--strip_ai_metadata", action='store_true',
+                        help="DANGER: Aggressively strips ALL metadata, keeping only the ICC color profile.\n"
+                             "Use this for removing stubborn 'Generated Image' data from AI-edited files.\n"
+                             "This option overrides --clear_properties.")
     args = parser.parse_args()
 
     tags_to_clear_for_all_files = []
-    input_folder = None # Initialize input_folder
+    input_folder = args.input_folder
 
-    # Logic for determining input_folder and tags_to_clear
-    if args.input_folder and args.clear_properties is not None:
-        # GUI mode: input_folder and clear_properties provided via CLI
-        input_folder = args.input_folder
-        print("\n--- Metadata Configuration (from command line) ---")
+    # --- Determine Operation Mode ---
+
+    # 1. Aggressive Strip Mode (highest priority)
+    if args.strip_ai_metadata:
+        print("\n" + "="*50)
+        print("     D A N G E R O U S   O P E R A T I O N")
+        print("="*50)
+        print("Selected: Aggressively strip ALL metadata except ICC Profile.")
+        print("This will override any other selections.")
+        print("="*50 + "\n")
+        tags_to_clear_for_all_files = [AGGRESSIVE_STRIP_FLAG]
+        if not input_folder:
+            sys.stderr.write("Error: --strip_ai_metadata requires the --input_folder argument.\n")
+            sys.exit(1)
+
+    # 2. Non-Interactive (CLI) Mode
+    elif input_folder and args.clear_properties is not None:
+        print("\n--- Metadata Configuration (Command Line) ---")
         for prop_name in args.clear_properties:
             if prop_name in METADATA_PROPERTIES:
-                tags = METADATA_PROPERTIES[prop_name]
-                tags_to_clear_for_all_files.append(tags)
+                tags_to_clear_for_all_files.extend(METADATA_PROPERTIES[prop_name])
                 print(f"  -> '{prop_name}' will be CLEARED.")
             else:
-                sys.stderr.write(f"Warning: Unknown metadata property '{prop_name}' specified. Skipping.\n")
+                sys.stderr.write(f"Warning: Unknown property '{prop_name}' specified. Skipping.\n")
         tags_to_clear_for_all_files = list(set(tags_to_clear_for_all_files))
 
-    elif args.input_folder and args.clear_properties is None:
-        # CLI mode: input_folder provided, but no specific clear properties. Assume interactive for properties.
-        input_folder = args.input_folder
-        print(f"Input folder specified: '{input_folder}'. Prompting for metadata options...")
-        tags_to_clear_for_all_files = get_user_choices_interactive()
-
-    elif not args.input_folder and args.clear_properties is None:
-        # Pure interactive mode: neither input_folder nor clear_properties provided
-        # Use Tkinter for folder selection in this standalone interactive mode
-        print("\nPure interactive mode: Launching folder selector and prompting for metadata options...")
-        root = tk.Tk()
-        root.withdraw() # Hide the main window
-        input_folder = filedialog.askdirectory(title="Select Input Folder")
-        root.destroy()
-
+    # 3. Fully Interactive Mode
+    else:
+        print("\n--- Interactive Mode ---")
         if not input_folder:
-            print("No folder selected. Exiting.")
-            sys.exit(0)
-
+            root = tk.Tk()
+            root.withdraw()
+            input_folder = filedialog.askdirectory(title="Select Folder to Process")
+            root.destroy()
+            if not input_folder:
+                print("No folder selected. Exiting.")
+                sys.exit(0)
+        
         print(f"Selected folder: {input_folder}")
         tags_to_clear_for_all_files = get_user_choices_interactive()
-    else:
-        # This case should ideally not happen if argparse is set up correctly,
-        # but handles if only --clear_properties is given without --input_folder.
-        sys.stderr.write("Error: --clear_properties requires --input_folder when not running fully interactively.\n")
-        sys.exit(1)
 
+    # --- Execute Processing ---
 
     if not os.path.isdir(input_folder):
         sys.stderr.write(f"Error: Input folder not found at '{input_folder}'\n")
@@ -221,28 +205,21 @@ def main():
         sys.exit(0)
     
     print("\n--- Starting File Processing ---")
-    print(f"The following ExifTool commands will be used to clear metadata: {tags_to_clear_for_all_files}")
-
     total_files = len(image_files)
-    processed_count = 0
-
-    print(f"\nStarting metadata processing for {total_files} images in '{input_folder}'...")
-
-    for filename in image_files:
+    for i, filename in enumerate(image_files):
         file_path = os.path.join(input_folder, filename)
         clear_metadata_from_image_exiftool(
             file_path,
-            exiftool_tags_to_clear_final=tags_to_clear_for_all_files
+            exiftool_args_to_run=tags_to_clear_for_all_files
         )
-        processed_count += 1
-        # Report progress to stdout, which the GUI will capture
-        sys.stdout.write(f"PROGRESS:{processed_count / total_files * 100:.2f}\n")
+        # Report progress to stdout for the calling UI
+        progress = (i + 1) / total_files * 100
+        sys.stdout.write(f"PROGRESS:{progress:.2f}\n")
         sys.stdout.flush()
 
-    print(f"\nFinished processing metadata for {processed_count} files.")
-    sys.stdout.write(f"PROGRESS:100.00\n")
-    sys.stdout.flush()
+    print(f"\nFinished processing {len(image_files)} files.")
     sys.exit(0)
+
 
 if __name__ == "__main__":
     main()

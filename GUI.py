@@ -3003,7 +3003,7 @@ class RenamerApp:
             # Add any other new keys here if you expand METADATA_PROPERTIES later
         ]
         
-        max_cols_metadata = 3 # You can adjust this number for layout
+        max_cols_metadata = 2 # You can adjust this number for layout
 
         # Dynamically create checkboxes based on the refined METADATA_PROPERTIES
         # Filter out any keys that might not exist if display_order_metadata_props is more specific
@@ -3013,7 +3013,7 @@ class RenamerApp:
             row = i // max_cols_metadata
             col = i % max_cols_metadata
             ttk.Checkbutton(metadata_checkboxes_frame, text=prop_name, variable=self.clear_metadata_checkbox_vars[prop_name], style='TCheckbutton').grid(row=row, column=col, sticky="w", padx=2, pady=1)
-            
+
         # Select All and Clear All buttons for metadata
         metadata_selection_buttons_frame = ttk.Frame(metadata_controls_frame, style='TFrame')
         metadata_selection_buttons_frame.pack(side="bottom", fill="x", pady=(5,0))

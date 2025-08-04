@@ -464,13 +464,9 @@ class RenamerApp:
         # Map of metadata property names to their BooleanVar for checkboxes
         self.clear_metadata_checkbox_vars = {
             "Description": tk.BooleanVar(value=False),
-            "ImageDescription": tk.BooleanVar(value=False),
-            "Caption-Abstract": tk.BooleanVar(value=False),
             "Keywords": tk.BooleanVar(value=False),
-            "Subject": tk.BooleanVar(value=False),
             "Title": tk.BooleanVar(value=False),
             "Headline": tk.BooleanVar(value=False),
-            "ObjectName": tk.BooleanVar(value=False),
             "Event": tk.BooleanVar(value=False),
             "'Generated Image' in Title": tk.BooleanVar(value=False),
         }
@@ -2996,14 +2992,28 @@ class RenamerApp:
         metadata_checkboxes_frame.pack(side="top", fill="x", expand=True)
 
         # Create and arrange checkboxes for each metadata property
-        # Sort keys to ensure consistent order in UI
-        sorted_metadata_props = sorted(self.clear_metadata_checkbox_vars.keys())
-        max_cols_metadata = 3 # You can adjust this number
-        for i, prop_name in enumerate(sorted_metadata_props):
+        # Ensure a consistent order for display, prioritizing common fields.
+        display_order_metadata_props = [
+            "Description",
+            "Keywords",
+            "Title",
+            "Headline",
+            "Event",
+            "'Generated Image' in Title"
+            # Add any other new keys here if you expand METADATA_PROPERTIES later
+        ]
+        
+        max_cols_metadata = 3 # You can adjust this number for layout
+
+        # Dynamically create checkboxes based on the refined METADATA_PROPERTIES
+        # Filter out any keys that might not exist if display_order_metadata_props is more specific
+        valid_display_props = [prop for prop in display_order_metadata_props if prop in self.clear_metadata_checkbox_vars]
+
+        for i, prop_name in enumerate(valid_display_props):
             row = i // max_cols_metadata
             col = i % max_cols_metadata
             ttk.Checkbutton(metadata_checkboxes_frame, text=prop_name, variable=self.clear_metadata_checkbox_vars[prop_name], style='TCheckbutton').grid(row=row, column=col, sticky="w", padx=2, pady=1)
-
+            
         # Select All and Clear All buttons for metadata
         metadata_selection_buttons_frame = ttk.Frame(metadata_controls_frame, style='TFrame')
         metadata_selection_buttons_frame.pack(side="bottom", fill="x", pady=(5,0))

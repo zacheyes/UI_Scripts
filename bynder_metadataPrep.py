@@ -5,8 +5,10 @@ import os
 import re
 import sys
 import argparse
+import time
 import tkinter as tk
-from tkinter import Tk, filedialog 
+from tkinter import Tk, filedialog
+
 
 # Suppress specific UserWarning about the workbook style
 warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
@@ -180,6 +182,33 @@ def generate_rows(vendor, sku, step_path, template):
         rows.append(new_row_dict)
     return rows
 
+def read_excel_with_retries(path, usecols, retries=3, delay_seconds=2):
+    """
+    Reads an Excel file with retry logic to mitigate transient access errors.
+    Args:
+        path (str): Path to the Excel file.
+        usecols (list): Columns to read.
+        retries (int): Number of attempts (default 3).
+        delay_seconds (int): Seconds to wait between attempts (default 2).
+    Returns:
+        pandas.DataFrame
+    Raises:
+        The last caught exception if all retries fail.
+    """
+    last_err = None
+    for attempt in range(1, retries + 1):
+        try:
+            return pd.read_excel(path, usecols=usecols)
+        except Exception as e:
+            last_err = e
+            print(
+                f"Script: Error reading '{path}' (attempt {attempt}/{retries}): {e}",
+                file=sys.stderr
+            )
+            if attempt < retries:
+                time.sleep(delay_seconds)
+    print(f"Script: Failed to read '{path}' after {retries} attempts.", file=sys.stderr)
+    raise last_err
 
 # --- Main Script Execution Logic ---
 def main():
@@ -213,19 +242,22 @@ def main():
     output_file = os.path.join(downloads_folder, f"newBatch_metadataImporter_{timestamp}.csv")
 
     try:
-        # Load data from the two STEP Excel reference files
-        df_one = pd.read_excel(ref_file_one, usecols=['SKU', 'Vendor Code', 'Path'])
-        df_two = pd.read_excel(ref_file_two, usecols=['SKU', 'Vendor Code', 'Path'])
-        
+        # Load data from the two STEP Excel reference files with retry logic
+        df_one = read_excel_with_retries(ref_file_one, usecols=['SKU', 'Vendor Code', 'Path'], retries=3, delay_seconds=2)
+        df_two = read_excel_with_retries(ref_file_two, usecols=['SKU', 'Vendor Code', 'Path'], retries=3, delay_seconds=2)
+
         # Concatenate the two DataFrames into one master reference DataFrame
         df_refs = pd.concat([df_one, df_two], ignore_index=True)
-        
-        # Convert all SKUs in the reference DataFrame to uppercase for consistent matching
-        df_refs['SKU'] = df_refs['SKU'].str.upper()
+
+        # Normalize SKU casing for consistent matching
+        df_refs['SKU'] = df_refs['SKU'].astype(str).str.upper()
     except Exception as e:
-        # Handle errors during reading or processing of Excel files
-        print(f"Script: Error reading reference Excel files from '{ref_file_one}' and '{ref_file_two}': {e}", file=sys.stderr)
+        print(
+            f"Script: Error reading reference Excel files from '{ref_file_one}' and '{ref_file_two}': {e}",
+            file=sys.stderr
+        )
         sys.exit(1)
+
 
     # Define the template for generating metadata rows. This specifies the expected
     # filenames, names, download URLs, file types, product SKU positions, and deliverables.
@@ -367,26 +399,38 @@ def main():
             print(f"Script: Warning: Could not extract SKU/Vendor from filename: {filename}. Skipping.", file=sys.stderr)
             continue
 
+        # Enforce vendor code from filename is exactly 4 characters long.
+        # If not, stop the entire script with the requested message.
+        if not vendor_code or len(vendor_code) != 4:
+            print("The Vendor Code in your file names is not four characters long. Please correct this and try again.", file=sys.stderr)
+            sys.exit(1)
+
         # Process metadata only once per unique SKU to avoid duplicate row sets
         if sku not in parsed_skus:
-            parsed_skus.add(sku) # Add SKU to the set of processed SKUs
+            parsed_skus.add(sku)
 
             # Look up the SKU in the combined reference DataFrame
             ref_row = df_refs[df_refs['SKU'] == sku]
 
-            step_path = "" # Initialize STEP path as blank
+            step_path = ""  # Initialize STEP path as blank
 
             if not ref_row.empty:
-                # If SKU is found in STEP data, use its Vendor Code and Path
-                vendor_code_from_step = ref_row.iloc[0]['Vendor Code']
-                # Prefer vendor code from STEP if it's not NaN, otherwise keep the one extracted from filename
-                vendor_code = vendor_code_from_step if pd.notna(vendor_code_from_step) else vendor_code
-                # Assign STEP path if it's not NaN, otherwise keep it blank
-                step_path = ref_row.iloc[0]['Path'] if pd.notna(ref_row.iloc[0]['Path']) else ""
+                # Do NOT overwrite vendor_code from filename anymore.
+                # Only pull STEP Path if available.
+                step_path_val = ref_row.iloc[0]['Path']
+                step_path = step_path_val if pd.notna(step_path_val) else ""
             else:
                 # If SKU is not found in STEP data, add it to missing_skus list
                 missing_skus.append(sku)
-                print(f"Script: Warning: SKU '{sku}' not found in STEP exports. 'STEP Path' and 'Product Name (STEP)' will be blank in CSV.", file=sys.stderr)
+                print(
+                    f"Script: Warning: SKU '{sku}' not found in STEP exports. 'STEP Path' and 'Product Name (STEP)' will be blank in CSV.",
+                    file=sys.stderr
+                )
+
+            # Generate the set of metadata rows for the current SKU based on the template
+            generated_rows = generate_rows(vendor_code, sku, step_path, template)
+            for row in generated_rows:
+                output_data.append(row)
 
             # Generate the set of metadata rows for the current SKU based on the template
             generated_rows = generate_rows(vendor_code, sku, step_path, template)

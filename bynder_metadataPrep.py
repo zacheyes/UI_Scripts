@@ -427,15 +427,11 @@ def main():
                     file=sys.stderr
                 )
 
-            # Generate the set of metadata rows for the current SKU based on the template
+            # Generate once
             generated_rows = generate_rows(vendor_code, sku, step_path, template)
             for row in generated_rows:
                 output_data.append(row)
 
-            # Generate the set of metadata rows for the current SKU based on the template
-            generated_rows = generate_rows(vendor_code, sku, step_path, template)
-            for row in generated_rows:
-                output_data.append(row)
         
         # --- Send Progress Update to UI ---
         # This line is critical for external UI applications to track progress.

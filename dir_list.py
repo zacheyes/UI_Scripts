@@ -1,6 +1,8 @@
 import os
 import csv
 import sys
+import subprocess
+import shutil
 from datetime import datetime
 import tkinter as tk # Import tkinter
 from tkinter import filedialog # Import filedialog for the graphical picker
@@ -42,12 +44,13 @@ def export_directory_list_to_csv(directory_path, progress_callback=None):
 
         with open(output_csv_path, mode='w', newline='', encoding='utf-8') as file:
             writer = csv.writer(file)
-            writer.writerow(["Full Path", "Filename"])  # Write the header
+            writer.writerow(["Full Path", "Filename", "Keywords"])  # Write the header
 
             # Second pass: write files and update progress
             for full_path in all_files:
                 filename = os.path.basename(full_path)
-                writer.writerow([full_path, filename])
+                keywords = get_keywords_from_file(full_path)
+                writer.writerow([full_path, filename, keywords])
                 processed_files += 1
                 if progress_callback:
                     # Report progress as value/total
@@ -57,6 +60,57 @@ def export_directory_list_to_csv(directory_path, progress_callback=None):
 
     except Exception as e:
         return False, f"An unexpected error occurred during directory listing: {e}", None
+
+# ADD this helper anywhere above export_directory_list_to_csv
+def get_keywords_from_file(full_path):
+    """
+    Returns a pipe-separated string of embedded keywords for a file.
+    Uses ExifTool if available; otherwise returns an empty string.
+    Checks IPTC:Keywords, XMP:Subject, and EXIF:XPKeywords.
+    """
+    # Ensure exiftool is available
+    if shutil.which("exiftool") is None:
+        return ""
+
+    try:
+        # -s -s -s: bare values; -sep sets list separator; order matters
+        cmd = [
+            "exiftool",
+            "-s", "-s", "-s",
+            "-sep", "|",
+            "-Keywords",
+            "-Subject",
+            "-XPKeywords",
+            full_path
+        ]
+        out = subprocess.check_output(cmd, stderr=subprocess.STDOUT, universal_newlines=True)
+        # exiftool returns lines like:
+        # Keywords: tag1|tag2
+        # Subject: tag1|tag2
+        # XPKeywords: tag1;tag2   (sometimes semi-colon delimited)
+        keywords = []
+        for line in out.splitlines():
+            if not line.strip():
+                continue
+            # Split on first colon to separate tag name from value
+            if ":" in line:
+                _, value = line.split(":", 1)
+                value = value.strip()
+                if value:
+                    # XPKeywords sometimes comes semi-colon delimited; normalize to pipes
+                    value = value.replace(";", "|")
+                    keywords.extend([k.strip() for k in value.split("|") if k.strip()])
+
+        # De-duplicate while preserving order
+        seen = set()
+        deduped = []
+        for k in keywords:
+            if k not in seen:
+                seen.add(k)
+                deduped.append(k)
+        return "|".join(deduped)
+    except Exception:
+        return ""
 
 if __name__ == "__main__":
     # Initialize Tkinter
@@ -94,4 +148,5 @@ if __name__ == "__main__":
         print(f"Error: {message}", file=sys.stderr)
 
     # Destroy the Tkinter root window after use
+
     root.destroy()

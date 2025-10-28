@@ -120,6 +120,11 @@ if __name__ == "__main__":
     # Open a directory selection dialog
     print("Please select a folder to list its contents...") # Print to console for clarity
     cli_dir_path = filedialog.askdirectory(title="Select a Folder to List Contents Of")
+    
+    # Warn if exiftool is not available
+    if shutil.which("exiftool") is None:
+        print("Note: exiftool not found on PATH. Keywords column will be empty.")
+
 
     # If the user cancels the dialog, cli_dir_path will be an empty string
     if not cli_dir_path:
@@ -150,3 +155,4 @@ if __name__ == "__main__":
     # Destroy the Tkinter root window after use
 
     root.destroy()
+

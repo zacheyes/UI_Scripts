@@ -204,7 +204,7 @@ def main():
         "SKU", "Name", "Dropped", "Visible on Website", "Restock Date", "Stock Level", "Vendor Code", "Family Code", "Path", "Collection", "Color",
         "Additional Dimensions", "Length", "Width", "Height",
         "Inside Arm to Arm", "Seat Depth", "Seat Height", "Extended Length",
-        "Extended Width", "Drawer Length", "Drawer Height", "Arm Height"
+        "Extended Width", "Drawer Length", "Drawer Height", "Arm Height", "Frame Height Without Pillows"
     ]
 
     output_data = []
@@ -250,3 +250,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

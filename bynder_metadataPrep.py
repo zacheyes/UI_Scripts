@@ -89,6 +89,14 @@ def extract_sku_and_vendor_from_filename(filename):
     Returns:
         tuple: A tuple containing (vendor_code, sku) in uppercase, or (None, None) if no match.
     """
+    # Special case: square images named like 200019710_square.jpg
+    # SKU = first 9 characters, no vendor in filename.
+    m_square = re.search(r'^([A-Z0-9]{9})_square\.(jpg|jpeg|png)$', filename, re.IGNORECASE)
+    if m_square:
+        sku = m_square.group(1).upper()
+        vendor_code = "NONE"  # 4 chars to satisfy existing vendor length enforcement
+        return vendor_code, sku
+    
     # Regex for patterns like FW_VENDOR_SKU_... or VENDOR_SKU_...
     match = re.search(r'^(?:FW_)?([A-Z0-9]+)_([A-Z0-9]{9})_.*', filename, re.IGNORECASE)
     if match:
@@ -162,22 +170,28 @@ def generate_rows(vendor, sku, step_path, template):
         new_row_dict["filename"] = item["filename"].format(vendor=vendor, sku=sku)
         new_row_dict["name"] = item["name"].format(vendor=vendor, sku=sku)
         new_row_dict["Deliverable"] = item["Deliverable"]
-        new_row_dict["Product SKU"] = sku
-        new_row_dict["Product SKU Position"] = item["Product SKU Position"].format(sku=sku)
+        new_row_dict["Product SKU"] = item.get("Product SKU", sku)
+        psp_template = item.get("Product SKU Position", "")
+        new_row_dict["Product SKU Position"] = psp_template.format(sku=sku) if psp_template else ""
         new_row_dict["File Type"] = item["File Type"]
         new_row_dict["Asset Identifier"] = item["name"].format(vendor=vendor, sku=sku)
 
-        # Set common metadata fields
-        new_row_dict["Asset Type"] = "Product Materials"
-        new_row_dict["Asset Sub-Type"] = "Product Site Asset"
-        new_row_dict["Asset Status"] = "Final"
-        new_row_dict["Usage Rights"] = "Approved for External Usage"
-        new_row_dict["tags"] = sku
-        new_row_dict["STEP Path"] = step_path
-        new_row_dict["Link to Wrike Project"] = "No link"
-        new_row_dict["Sync to Site"] = "Do sync to site"
-        new_row_dict["Vendor Code"] = vendor
-        new_row_dict["Product Name (STEP)"] = "" # This column typically needs to be filled later via lookup
+        # --- Defaults (can be overridden by template item keys) ---
+        new_row_dict["Asset Type"] = item.get("Asset Type", "Product Materials")
+        new_row_dict["Asset Sub-Type"] = item.get("Asset Sub-Type", "Product Site Asset")
+        new_row_dict["Asset Status"] = item.get("Asset Status", "Final")
+        new_row_dict["Usage Rights"] = item.get("Usage Rights", "Approved for External Usage")
+        new_row_dict["tags"] = item.get("tags", sku)
+        new_row_dict["STEP Path"] = item.get("STEP Path", step_path)
+        new_row_dict["Link to Wrike Project"] = item.get("Link to Wrike Project", "No link")
+        new_row_dict["Sync to Site"] = item.get("Sync to Site", "Do sync to site")
+        new_row_dict["Vendor Code"] = item.get("Vendor Code", vendor)
+        new_row_dict["Product Name (STEP)"] = ""  # filled later via lookup
+
+        # Optional template-driven fields
+        if "Image Type" in item:
+            new_row_dict["Image Type"] = item["Image Type"]
+
 
         rows.append(new_row_dict)
     return rows
@@ -263,6 +277,8 @@ def main():
     # filenames, names, download URLs, file types, product SKU positions, and deliverables.
     template = [
         {"filename": "FW_{vendor}_{sku}_3000.jpg", "name": "FW_{vendor}_{sku}_3000", "Download URL": "https://raymourflanigan.scene7.com/is/image/RaymourandFlanigan/FW_{vendor}_{sku}_3000", "File Type": "JPEG", "Product SKU Position": "{sku}_100", "Deliverable": "Product Carousel Image"},
+        {"filename": "FW_{vendor}_{sku}_3000_special100.jpg", "name": "FW_{vendor}_{sku}_3000_special100", "Download URL": "https://raymourflanigan.scene7.com/is/image/RaymourandFlanigan/FW_{vendor}_{sku}_3000", "File Type": "JPEG", "Product SKU Position": "{sku}_100", "Deliverable": "Product Carousel Image"},
+        {"filename": "FW_{vendor}_{sku}_3000_cozy100.jpg", "name": "FW_{vendor}_{sku}_3000_cozy100", "Download URL": "https://raymourflanigan.scene7.com/is/image/RaymourandFlanigan/FW_{vendor}_{sku}_3000", "File Type": "JPEG", "Product SKU Position": "{sku}_100", "Deliverable": "Product Carousel Image"},
         {"filename": "FW_{vendor}_{sku}_Alt1_3000.jpg", "name": "FW_{vendor}_{sku}_Alt1_3000", "Download URL": "https://raymourflanigan.scene7.com/is/image/RaymourandFlanigan/FW_{vendor}_{sku}_Alt1_3000", "File Type": "JPEG", "Product SKU Position": "{sku}_200", "Deliverable": "Product Carousel Image"},
         {"filename": "FW_{vendor}_{sku}_Alt2_3000.jpg", "name": "FW_{vendor}_{sku}_Alt2_3000", "Download URL": "https://raymourflanigan.scene7.com/is/image/RaymourandFlanigan/FW_{vendor}_{sku}_Alt2_3000", "File Type": "JPEG", "Product SKU Position": "{sku}_300", "Deliverable": "Product Carousel Image"},
         {"filename": "FW_{vendor}_{sku}_Alt3_3000.jpg", "name": "FW_{vendor}_{sku}_Alt3_3000", "Download URL": "https://raymourflanigan.scene7.com/is/image/RaymourandFlanigan/FW_{vendor}_{sku}_Alt3_3000", "File Type": "JPEG", "Product SKU Position": "{sku}_400", "Deliverable": "Product Carousel Image"},
@@ -376,7 +392,24 @@ def main():
         {"filename": "{vendor}_{sku}_s4_3000.jpg", "name": "{vendor}_{sku}_s4_3000", "Download URL": "https://raymourflanigan.scene7.com/is/image/RaymourandFlanigan/{vendor}_{sku}_s4_3000", "File Type": "JPEG", "Product SKU Position": "{sku}_grid5300", "Deliverable": "Product Grid Swatch Detail Image"},
         {"filename": "{vendor}_{sku}_s5_3000.jpg", "name": "{vendor}_{sku}_s5_3000", "Download URL": "https://raymourflanigan.scene7.com/is/image/RaymourandFlanigan/{vendor}_{sku}_s5_3000", "File Type": "JPEG", "Product SKU Position": "{sku}_grid5400", "Deliverable": "Product Grid Swatch Detail Image"},
         {"filename": "{vendor}_{sku}_s6_3000.jpg", "name": "{vendor}_{sku}_s6_3000", "Download URL": "https://raymourflanigan.scene7.com/is/image/RaymourandFlanigan/{vendor}_{sku}_s6_3000", "File Type": "JPEG", "Product SKU Position": "{sku}_grid5500", "Deliverable": "Product Grid Swatch Detail Image"},
-        {"filename": "{vendor}_{sku}_dimension.jpg", "name": "{vendor}_{sku}_dimension", "Download URL": "https://raymourflanigan.scene7.com/is/image/RaymourandFlanigan/{vendor}_{sku}_dimension", "File Type": "JPEG", "Product SKU Position": "{sku}_dimension", "Deliverable": "Product Dimensions Diagram"}
+        {"filename": "{vendor}_{sku}_dimension.jpg", "name": "{vendor}_{sku}_dimension", "Download URL": "https://raymourflanigan.scene7.com/is/image/RaymourandFlanigan/{vendor}_{sku}_dimension", "File Type": "JPEG", "Product SKU Position": "{sku}_dimension", "Deliverable": "Product Dimensions Diagram"},
+        {
+            "filename": "{sku}_square.jpg",
+            "name": "{sku}_square",
+            "File Type": "JPEG",
+            "Deliverable": "Meta Carousel Square",
+            "Product SKU Position": "",
+            "Image Type": "Room Shot",
+            "Asset Type": "Final Creative Materials",
+            "Asset Sub-Type": "Paid Media",
+            "Asset Status": "Final",
+            "Usage Rights": "Approved for External Usage",
+            "Vendor Code": "",
+            "STEP Path": "",
+            "Sync to Site": "",
+            "Product SKU": ""
+        }
+
     ]
 
     # Initialize lists to hold processed data and SKUs not found in STEP exports
@@ -393,6 +426,11 @@ def main():
     for i, filename in enumerate(all_assets_in_folder):
         # Extract vendor code and SKU from the current filename
         vendor_code, sku = extract_sku_and_vendor_from_filename(filename)
+        is_square_file = bool(re.search(r'^([A-Z0-9]{9})_square\.(jpg|jpeg|png)$', filename, re.IGNORECASE))
+        
+        if is_square_file:
+            vendor_code = ""
+
         
         # If SKU could not be extracted, skip this file
         if not sku:
@@ -401,9 +439,11 @@ def main():
 
         # Enforce vendor code from filename is exactly 4 characters long.
         # If not, stop the entire script with the requested message.
-        if not vendor_code or len(vendor_code) != 4:
-            print("The Vendor Code in your file names is not four characters long. Please correct this and try again.", file=sys.stderr)
-            sys.exit(1)
+        if not is_square_file:
+            if not vendor_code or len(vendor_code) != 4:
+                print("The Vendor Code in your file names is not four characters long. Please correct this and try again.", file=sys.stderr)
+                sys.exit(1)
+
 
         # Process metadata only once per unique SKU to avoid duplicate row sets
         if sku not in parsed_skus:
@@ -412,23 +452,28 @@ def main():
             # Look up the SKU in the combined reference DataFrame
             ref_row = df_refs[df_refs['SKU'] == sku]
 
-            step_path = ""  # Initialize STEP path as blank
+            step_path = ""
 
-            if not ref_row.empty:
-                # Do NOT overwrite vendor_code from filename anymore.
-                # Only pull STEP Path if available.
-                step_path_val = ref_row.iloc[0]['Path']
-                step_path = step_path_val if pd.notna(step_path_val) else ""
+            if not is_square_file:
+                if not ref_row.empty:
+                    step_path_val = ref_row.iloc[0]['Path']
+                    step_path = step_path_val if pd.notna(step_path_val) else ""
+                else:
+                    missing_skus.append(sku)
+                    print(
+                        f"Script: Warning: SKU '{sku}' not found in STEP exports. 'STEP Path' and 'Product Name (STEP)' will be blank in CSV.",
+                        file=sys.stderr
+                    )
+
+            if is_square_file:
+                step_path = ""  # never fill for square images
+                template_to_use = [t for t in template if t.get("Deliverable") == "Meta Carousel Square"]
             else:
-                # If SKU is not found in STEP data, add it to missing_skus list
-                missing_skus.append(sku)
-                print(
-                    f"Script: Warning: SKU '{sku}' not found in STEP exports. 'STEP Path' and 'Product Name (STEP)' will be blank in CSV.",
-                    file=sys.stderr
-                )
+                template_to_use = template
+
 
             # Generate once
-            generated_rows = generate_rows(vendor_code, sku, step_path, template)
+            generated_rows = generate_rows(vendor_code, sku, step_path, template_to_use)
             for row in generated_rows:
                 output_data.append(row)
 

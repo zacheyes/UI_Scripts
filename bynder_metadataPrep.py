@@ -510,6 +510,7 @@ def main():
 
     output_data = []
     parsed_skus = set()
+    pending_square_skus = set()  # SKUs that only have square files so far
     missing_skus = []  # Track files with missing/invalid SKUs (for end-of-run reporting)
 
     # Collect all supported asset files (images and videos) in the input folder
@@ -551,23 +552,37 @@ def main():
 
         # Process metadata only once per unique SKU to avoid duplicate row sets
         if sku not in parsed_skus:
-            parsed_skus.add(sku)
-
             # STEP exports removed: always leave STEP Path blank.
             step_path = ""
 
             if is_square_file:
-                template_to_use = [t for t in template if t.get("Deliverable") == "Meta Carousel Square"]
+                # Step 1: If you see a square file for a new SKU, record it but do not finalize yet.
+                pending_square_skus.add(sku)
             else:
-                template_to_use = template
+                # Step 2: When you later see a non-square file for that SKU, generate the full template once.
+                parsed_skus.add(sku)
+                if sku in pending_square_skus:
+                    pending_square_skus.remove(sku)
 
-            generated_rows = generate_rows(vendor_code, sku, step_path, template_to_use)
-            for row in generated_rows:
-                output_data.append(row)
+                template_to_use = template
+                generated_rows = generate_rows(vendor_code, sku, step_path, template_to_use)
+                for row in generated_rows:
+                    output_data.append(row)
 
         # --- Send Progress Update to UI ---
         progress_percentage = (i + 1) / total_assets * 100
         print(f"PROGRESS:{progress_percentage:.2f}", flush=True)
+
+    # Step 3: After the loop, for any SKUs that only ever had square files, generate the square-only row set.
+    for sku in sorted(pending_square_skus):
+        if sku in parsed_skus:
+            continue
+
+        step_path = ""
+        template_to_use = [t for t in template if t.get("Deliverable") == "Meta Carousel Square"]
+        generated_rows = generate_rows("", sku, step_path, template_to_use)
+        for row in generated_rows:
+            output_data.append(row)
 
     if not output_data:
         print(

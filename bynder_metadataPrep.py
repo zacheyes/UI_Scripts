@@ -13,20 +13,8 @@ from tkinter import Tk, filedialog
 # Suppress specific UserWarning about the workbook style
 warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
 
-# --- Hardcoded STEP Export Paths (Platform Specific) ---
-# These paths point to the Excel files containing SKU, Vendor Code, and Asset Paths.
-# They are adjusted based on the operating system to ensure correct file access.
-if sys.platform == "darwin":  # macOS
-    HARDCODED_STEP_ONE = "/Volumes/Work_In_Progress/2024_DAM_DI_Projects/_STEP Export/STEP_Export_one.xlsx"
-    HARDCODED_STEP_TWO = "/Volumes/Work_In_Progress/2024_DAM_DI_Projects/_STEP Export/STEP_Export_two.xlsx" # CORRECTED PATH
-elif os.name == "nt":  # Windows
-    HARDCODED_STEP_ONE = r"W:\2024_DAM_DI_Projects\_STEP Export\STEP_Export_one.xlsx"
-    HARDCODED_STEP_TWO = r"W:\2024_DAM_DI_Projects\_STEP Export\STEP_Export_two.xlsx"
-else:
-    # Fallback for unsupported OS. User might need to manually adjust these paths.
-    print(f"Warning: Unsupported OS '{sys.platform}'. Please update hardcoded STEP paths in bynder_metadataPrep.py.", file=sys.stderr)
-    HARDCODED_STEP_ONE = "STEP_Export_one.xlsx"
-    HARDCODED_STEP_TWO = "STEP_Export_two.xlsx"
+# --- STEP exports intentionally not used ---
+# This script no longer reads STEP exports or populates STEP-derived fields.
 
 
 # --- Function to get folder path (Supports command-line or UI selection) ---
@@ -40,7 +28,7 @@ def get_folder_path(input_folder_arg=None):
 
     Returns:
         str: The absolute path to the selected or provided input folder.
-    
+
     Exits:
         sys.exit(1) if no folder is selected or an error occurs.
     """
@@ -57,9 +45,9 @@ def get_folder_path(input_folder_arg=None):
     # If no argument or invalid argument, proceed with interactive folder selection via Tkinter
     try:
         root = tk.Tk()
-        root.withdraw() # Hide the main Tkinter window to only show the dialog
+        root.withdraw()  # Hide the main Tkinter window to only show the dialog
         folder_path = filedialog.askdirectory(title="Select the folder containing your assets")
-        root.destroy() # Destroy the temporary root window after selection to clean up resources
+        root.destroy()  # Destroy the temporary root window after selection to clean up resources
 
         if not folder_path:
             # If user closes the dialog without selecting a folder
@@ -68,45 +56,51 @@ def get_folder_path(input_folder_arg=None):
         return folder_path
     except ImportError:
         # Handle cases where Tkinter might not be installed or a display is not available
-        print("Script: Tkinter not found or display not available. Please provide the input folder as a command-line argument, e.g., 'python script.py --input /path/to/assets'", file=sys.stderr)
+        print(
+            "Script: Tkinter not found or display not available. Please provide the input folder as a command-line argument, e.g., 'python script.py --input /path/to/assets'",
+            file=sys.stderr,
+        )
         sys.exit(1)
     except Exception as e:
         # Catch any other unexpected errors during folder selection
         print(f"Script: An unexpected error occurred during interactive folder selection: {e}", file=sys.stderr)
         sys.exit(1)
 
+
 # --- Function to extract SKU and Vendor from filename ---
 def extract_sku_and_vendor_from_filename(filename):
     """
     Extracts vendor code and SKU from a given filename based on predefined patterns.
     It handles filenames starting with an optional 'FW_' prefix, followed by
-    the vendor code (alphanumeric), a 9-character SKU (alphanumeric), and then
+    the vendor code (alphanumeric), a SKU token (alphanumeric), and then
     either an underscore or a dot, followed by other characters.
 
+    NOTE: SKU length validation (must be exactly 9 characters) is done in main().
+
     Args:
-        filename (str): The name of the file (e.g., "FW_VENDOR_SKU987654321_3000.jpg").
+        filename (str): The name of the file (e.g., "FW_VENDOR_987654321_3000.jpg").
 
     Returns:
         tuple: A tuple containing (vendor_code, sku) in uppercase, or (None, None) if no match.
     """
     # Special case: square images named like 200019710_square.jpg
     # SKU = first 9 characters, no vendor in filename.
-    m_square = re.search(r'^([A-Z0-9]{9})_square\.(jpg|jpeg|png)$', filename, re.IGNORECASE)
+    m_square = re.search(r"^([A-Z0-9]{9})_square\.(jpg|jpeg|png)$", filename, re.IGNORECASE)
     if m_square:
         sku = m_square.group(1).upper()
-        vendor_code = "NONE"  # 4 chars to satisfy existing vendor length enforcement
+        vendor_code = "NONE"  # placeholder (not written to Vendor Code metadata column)
         return vendor_code, sku
-    
+
     # Regex for patterns like FW_VENDOR_SKU_... or VENDOR_SKU_...
-    match = re.search(r'^(?:FW_)?([A-Z0-9]+)_([A-Z0-9]{9})_.*', filename, re.IGNORECASE)
+    match = re.search(r"^(?:FW_)?([A-Z0-9]+)_([A-Z0-9]+)_.*", filename, re.IGNORECASE)
     if match:
-        vendor_code = match.group(1).upper() # Convert to uppercase for consistency
-        sku = match.group(2).upper()         # Convert to uppercase for consistency
+        vendor_code = match.group(1).upper()  # Convert to uppercase for consistency
+        sku = match.group(2).upper()  # Convert to uppercase for consistency
         return vendor_code, sku
     else:
         # Alternative regex for patterns like FW_VENDOR_SKU.ext or VENDOR_SKU.ext
         # This handles cases where the SKU is directly followed by the file extension.
-        match_alt = re.search(r'^(?:FW_)?([A-Z0-9]+)_([A-Z0-9]{9})\..*', filename, re.IGNORECASE)
+        match_alt = re.search(r"^(?:FW_)?([A-Z0-9]+)_([A-Z0-9]+)\..*", filename, re.IGNORECASE)
         if match_alt:
             vendor_code = match_alt.group(1).upper()
             sku = match_alt.group(2).upper()
@@ -115,58 +109,154 @@ def extract_sku_and_vendor_from_filename(filename):
             # If no pattern matches, return None for both
             return None, None
 
+
 # --- Function to generate rows based on template ---
 def generate_rows(vendor, sku, step_path, template):
     """
     Generates a list of dictionaries (rows) for the metadata importer CSV.
     Each row is based on the provided template and filled with product-specific
-    data (vendor, SKU, STEP path) and other default values.
+    data (vendor, SKU) and other default values.
+
+    IMPORTANT: STEP exports are not used. STEP Path / Vendor Code / Product Name (STEP)
+    are always left blank in the output CSV.
 
     Args:
-        vendor (str): The vendor code for the product.
+        vendor (str): The vendor code for the product (used for filename/name formatting only).
         sku (str): The SKU for the product.
-        step_path (str): The STEP path obtained from the reference Excel files.
-        template (list): A list of dictionaries, where each dictionary defines
-                         a template for a specific asset type (e.g., main image, alt image).
+        step_path (str): Ignored (kept for backward compatibility).
+        template (list): A list of dictionaries defining a template for asset types.
 
     Returns:
         list: A list of dictionaries, each representing a row for the output CSV.
     """
     rows = []
-    # Define all possible column headers for the output CSV.
-    # This ensures a consistent structure regardless of which template items are used.
     column_headers = [
-        "filename", "name", "description", "Asset Type", "Asset Sub-Type", "Deliverable", "Product SKU",
-        "Product SKU Position", "Asset Status", "Usage Rights", "tags", "File Type", "STEP Path",
-        "Link to Wrike Project", "Sync to Site", "Generic Dimension Diagram With Measurements", "Admin Status",
-        "Product Status", "Product Category", "Product Sub-Category", "Product Collection",
-        "Component SKUs", "Stock Level (only relevant for Inline products)", "Restock Date (only relevant for Inline products)",
-        "Link to Print Materials", "Link to Lifestyle Images", "Link to Store Images", "Initiative", "Sub-Initiative",
-        "Print Tracking Code", "Print Tracking - Start Date", "Print Tracking - End Date", "Year", "Video Expiration",
-        "Audio Licensing Expiration", "Ad ID", "Lead Offer Message", "Lead Finance Message", "Video Focus",
-        "Video Objective", "Video Type", "Total Run Time (TRT)", "Spot Running (MM/DD/YYYY)", "Language",
-        "Season", "Holiday/Special Occasion", "Talent", "Sunset Date (MM/DD/YYYY)", "Location Name", "Store Code",
-        "Location Status", "Location Address", "Location Town", "Location State", "Location Zip Code",
-        "Location Phone Number", "Location Type", "Location", "Inactive Product", "Partner", "Notes",
-        "Sign Facade Color", "Sign Location", "Sign Color", "Sign Text",
-        "Reviewed products in lifestyle", "Reviewed Studio Uploads", "Featured SKU", "Image Type",
-        "scratchpad", "3D Model Source Files Acquired", "Visible to", "BynderTest", "dim_Length",
-        "Bynder Report", "Dimensions", "dim_Height", "Figmage doc id", "dim_Width", "Figmage image extension",
-        "Figmage node id", "Figmage page id", "Performance Metric", "DNUCampaign", "DNUFeatures",
-        "DNUMaterials", "DNUStyle", "DNUPattern", "DNUPackage SKUs", "DNUSign Size",
-        "DNUDistribution Channel", "Dim diagram re-cropped", "Embedded Instructions (for updating existing metadata based on automations)",
-        "Mattress Size", "Asset Identifier", "Sync Batch", "Marked for Deletion from Site", "scene7 folder",
-        "Variant Type", "Source", "PSA Image Type", "Rights Notes", "Workflow", "Workflow Status",
-        "Product Name (STEP)", "Vendor Code", "Family Code", "Hero SKU", "Product Color", "Dropped",
-        "Visible on Website", "Sales Channel", "Associated Materials Status", "Product in Studio",
-        "DNU_PromoUpdate2", "Additional Files Upload Scratchpad", "Bump", "Carousel Dimensions Diagram Audit", "User Status", "Reviewed for Site Content Refresh", "Image Type Pre-Classification"
+        "filename",
+        "name",
+        "description",
+        "Asset Type",
+        "Asset Sub-Type",
+        "Deliverable",
+        "Product SKU",
+        "Product SKU Position",
+        "Asset Status",
+        "Usage Rights",
+        "tags",
+        "File Type",
+        "STEP Path",
+        "Link to Wrike Project",
+        "Sync to Site",
+        "Generic Dimension Diagram With Measurements",
+        "Admin Status",
+        "Product Status",
+        "Product Category",
+        "Product Sub-Category",
+        "Product Collection",
+        "Component SKUs",
+        "Stock Level (only relevant for Inline products)",
+        "Restock Date (only relevant for Inline products)",
+        "Link to Print Materials",
+        "Link to Lifestyle Images",
+        "Link to Store Images",
+        "Initiative",
+        "Sub-Initiative",
+        "Print Tracking Code",
+        "Print Tracking - Start Date",
+        "Print Tracking - End Date",
+        "Year",
+        "Video Expiration",
+        "Audio Licensing Expiration",
+        "Ad ID",
+        "Lead Offer Message",
+        "Lead Finance Message",
+        "Video Focus",
+        "Video Objective",
+        "Video Type",
+        "Total Run Time (TRT)",
+        "Spot Running (MM/DD/YYYY)",
+        "Language",
+        "Season",
+        "Holiday/Special Occasion",
+        "Talent",
+        "Sunset Date (MM/DD/YYYY)",
+        "Location Name",
+        "Store Code",
+        "Location Status",
+        "Location Address",
+        "Location Town",
+        "Location State",
+        "Location Zip Code",
+        "Location Phone Number",
+        "Location Type",
+        "Location",
+        "Inactive Product",
+        "Partner",
+        "Notes",
+        "Sign Facade Color",
+        "Sign Location",
+        "Sign Color",
+        "Sign Text",
+        "Reviewed products in lifestyle",
+        "Reviewed Studio Uploads",
+        "Featured SKU",
+        "Image Type",
+        "scratchpad",
+        "3D Model Source Files Acquired",
+        "Visible to",
+        "BynderTest",
+        "dim_Length",
+        "Bynder Report",
+        "Dimensions",
+        "dim_Height",
+        "Figmage doc id",
+        "dim_Width",
+        "Figmage image extension",
+        "Figmage node id",
+        "Figmage page id",
+        "Performance Metric",
+        "DNUCampaign",
+        "DNUFeatures",
+        "DNUMaterials",
+        "DNUStyle",
+        "DNUPattern",
+        "DNUPackage SKUs",
+        "DNUSign Size",
+        "DNUDistribution Channel",
+        "Dim diagram re-cropped",
+        "Embedded Instructions (for updating existing metadata based on automations)",
+        "Mattress Size",
+        "Asset Identifier",
+        "Sync Batch",
+        "Marked for Deletion from Site",
+        "scene7 folder",
+        "Variant Type",
+        "Source",
+        "PSA Image Type",
+        "Rights Notes",
+        "Workflow",
+        "Workflow Status",
+        "Product Name (STEP)",
+        "Vendor Code",
+        "Family Code",
+        "Hero SKU",
+        "Product Color",
+        "Dropped",
+        "Visible on Website",
+        "Sales Channel",
+        "Associated Materials Status",
+        "Product in Studio",
+        "DNU_PromoUpdate2",
+        "Additional Files Upload Scratchpad",
+        "Bump",
+        "Carousel Dimensions Diagram Audit",
+        "User Status",
+        "Reviewed for Site Content Refresh",
+        "Image Type Pre-Classification",
     ]
 
     for item in template:
-        # Initialize a new row dictionary with all column headers set to empty string
         new_row_dict = {col: "" for col in column_headers}
 
-        # Populate the specific fields based on the template item and product data
         new_row_dict["filename"] = item["filename"].format(vendor=vendor, sku=sku)
         new_row_dict["name"] = item["name"].format(vendor=vendor, sku=sku)
         new_row_dict["Deliverable"] = item["Deliverable"]
@@ -182,32 +272,26 @@ def generate_rows(vendor, sku, step_path, template):
         new_row_dict["Asset Status"] = item.get("Asset Status", "Final")
         new_row_dict["Usage Rights"] = item.get("Usage Rights", "Approved for External Usage")
         new_row_dict["tags"] = item.get("tags", sku)
-        new_row_dict["STEP Path"] = item.get("STEP Path", step_path)
+
+        # STEP-derived fields intentionally blank
+        new_row_dict["STEP Path"] = ""
+        new_row_dict["Vendor Code"] = ""
+        new_row_dict["Product Name (STEP)"] = ""
+
         new_row_dict["Link to Wrike Project"] = item.get("Link to Wrike Project", "No link")
         new_row_dict["Sync to Site"] = item.get("Sync to Site", "Do sync to site")
-        new_row_dict["Vendor Code"] = item.get("Vendor Code", vendor)
-        new_row_dict["Product Name (STEP)"] = ""  # filled later via lookup
 
-        # Optional template-driven fields
         if "Image Type" in item:
             new_row_dict["Image Type"] = item["Image Type"]
 
-
         rows.append(new_row_dict)
+
     return rows
+
 
 def read_excel_with_retries(path, usecols, retries=3, delay_seconds=2):
     """
-    Reads an Excel file with retry logic to mitigate transient access errors.
-    Args:
-        path (str): Path to the Excel file.
-        usecols (list): Columns to read.
-        retries (int): Number of attempts (default 3).
-        delay_seconds (int): Seconds to wait between attempts (default 2).
-    Returns:
-        pandas.DataFrame
-    Raises:
-        The last caught exception if all retries fail.
+    Kept for backward compatibility (no longer used now that STEP exports are removed).
     """
     last_err = None
     for attempt in range(1, retries + 1):
@@ -215,74 +299,94 @@ def read_excel_with_retries(path, usecols, retries=3, delay_seconds=2):
             return pd.read_excel(path, usecols=usecols)
         except Exception as e:
             last_err = e
-            print(
-                f"Script: Error reading '{path}' (attempt {attempt}/{retries}): {e}",
-                file=sys.stderr
-            )
+            print(f"Script: Error reading '{path}' (attempt {attempt}/{retries}): {e}", file=sys.stderr)
             if attempt < retries:
                 time.sleep(delay_seconds)
     print(f"Script: Failed to read '{path}' after {retries} attempts.", file=sys.stderr)
     raise last_err
 
+
 # --- Main Script Execution Logic ---
 def main():
     # 1. Setup Argument Parser for command-line input
     parser = argparse.ArgumentParser(description="Prepare metadata for Bynder upload from a folder of assets.")
-    # Add an optional argument for the input folder path
-    parser.add_argument('--input', '-i', type=str, help='Path to the folder containing assets (optional). If not provided, a folder selection dialog will appear.')
+    parser.add_argument(
+        "--input",
+        "-i",
+        type=str,
+        help="Path to the folder containing assets (optional). If not provided, a folder selection dialog will appear.",
+    )
     args = parser.parse_args()
 
     # 2. Get Input Folder Path, using argument if provided, otherwise using UI dialog
     input_folder = get_folder_path(args.input)
 
-    # 3. Use hardcoded STEP file paths defined at the top of the script
-    ref_file_one = HARDCODED_STEP_ONE
-    ref_file_two = HARDCODED_STEP_TWO
-
-    print(f"Script: Using STEP Export One from: {ref_file_one}")
-    print(f"Script: Using STEP Export Two from: {ref_file_two}")
-
-    # Validate existence and format of the hardcoded STEP files
-    if not os.path.exists(ref_file_one) or not ref_file_one.lower().endswith('.xlsx'):
-        print(f"Error: STEP_Export_one.xlsx not found or invalid at '{ref_file_one}'. Please verify path and file.", file=sys.stderr)
-        sys.exit(1)
-    if not os.path.exists(ref_file_two) or not ref_file_two.lower().endswith('.xlsx'):
-        print(f"Error: STEP_Export_two.xlsx not found or invalid at '{ref_file_two}'. Please verify path and file.", file=sys.stderr)
-        sys.exit(1)
+    # 3. STEP exports intentionally not used in this version.
+    # STEP Path, Vendor Code, and Product Name (STEP) will be left blank in the CSV.
 
     # 4. Define output file path in the user's Downloads folder
     downloads_folder = os.path.join(os.path.expanduser("~"), "Downloads")
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S') # Create a unique timestamp for the filename
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_file = os.path.join(downloads_folder, f"newBatch_metadataImporter_{timestamp}.csv")
 
-    try:
-        # Load data from the two STEP Excel reference files with retry logic
-        df_one = read_excel_with_retries(ref_file_one, usecols=['SKU', 'Vendor Code', 'Path'], retries=3, delay_seconds=2)
-        df_two = read_excel_with_retries(ref_file_two, usecols=['SKU', 'Vendor Code', 'Path'], retries=3, delay_seconds=2)
-
-        # Concatenate the two DataFrames into one master reference DataFrame
-        df_refs = pd.concat([df_one, df_two], ignore_index=True)
-
-        # Normalize SKU casing for consistent matching
-        df_refs['SKU'] = df_refs['SKU'].astype(str).str.upper()
-    except Exception as e:
-        print(
-            f"Script: Error reading reference Excel files from '{ref_file_one}' and '{ref_file_two}': {e}",
-            file=sys.stderr
-        )
-        sys.exit(1)
-
-
-    # Define the template for generating metadata rows. This specifies the expected
-    # filenames, names, download URLs, file types, product SKU positions, and deliverables.
+    # Define the template for generating metadata rows.
     template = [
-        {"filename": "FW_{vendor}_{sku}_3000.jpg", "name": "FW_{vendor}_{sku}_3000", "Download URL": "https://raymourflanigan.scene7.com/is/image/RaymourandFlanigan/FW_{vendor}_{sku}_3000", "File Type": "JPEG", "Product SKU Position": "{sku}_100", "Deliverable": "Product Carousel Image"},
-        {"filename": "FW_{vendor}_{sku}_3000_special100.jpg", "name": "FW_{vendor}_{sku}_3000_special100", "Download URL": "https://raymourflanigan.scene7.com/is/image/RaymourandFlanigan/FW_{vendor}_{sku}_3000", "File Type": "JPEG", "Product SKU Position": "{sku}_100", "Deliverable": "Product Carousel Image"},
-        {"filename": "FW_{vendor}_{sku}_3000_cozy100.jpg", "name": "FW_{vendor}_{sku}_3000_cozy100", "Download URL": "https://raymourflanigan.scene7.com/is/image/RaymourandFlanigan/FW_{vendor}_{sku}_3000", "File Type": "JPEG", "Product SKU Position": "{sku}_100", "Deliverable": "Product Carousel Image"},
-        {"filename": "FW_{vendor}_{sku}_Alt1_3000.jpg", "name": "FW_{vendor}_{sku}_Alt1_3000", "Download URL": "https://raymourflanigan.scene7.com/is/image/RaymourandFlanigan/FW_{vendor}_{sku}_Alt1_3000", "File Type": "JPEG", "Product SKU Position": "{sku}_200", "Deliverable": "Product Carousel Image"},
-        {"filename": "FW_{vendor}_{sku}_Alt2_3000.jpg", "name": "FW_{vendor}_{sku}_Alt2_3000", "Download URL": "https://raymourflanigan.scene7.com/is/image/RaymourandFlanigan/FW_{vendor}_{sku}_Alt2_3000", "File Type": "JPEG", "Product SKU Position": "{sku}_300", "Deliverable": "Product Carousel Image"},
-        {"filename": "FW_{vendor}_{sku}_Alt3_3000.jpg", "name": "FW_{vendor}_{sku}_Alt3_3000", "Download URL": "https://raymourflanigan.scene7.com/is/image/RaymourandFlanigan/FW_{vendor}_{sku}_Alt3_3000", "File Type": "JPEG", "Product SKU Position": "{sku}_400", "Deliverable": "Product Carousel Image"},
-        {"filename": "FW_{vendor}_{sku}_Alt4_3000.jpg", "name": "FW_{vendor}_{sku}_Alt4_3000", "Download URL": "https://raymourflanigan.scene7.com/is/image/RaymourandFlanigan/FW_{vendor}_{sku}_Alt4_3000", "File Type": "JPEG", "Product SKU Position": "{sku}_500", "Deliverable": "Product Carousel Image"},
+        {
+            "filename": "FW_{vendor}_{sku}_3000.jpg",
+            "name": "FW_{vendor}_{sku}_3000",
+            "Download URL": "https://raymourflanigan.scene7.com/is/image/RaymourandFlanigan/FW_{vendor}_{sku}_3000",
+            "File Type": "JPEG",
+            "Product SKU Position": "{sku}_100",
+            "Deliverable": "Product Carousel Image",
+        },
+        {
+            "filename": "FW_{vendor}_{sku}_3000_special100.jpg",
+            "name": "FW_{vendor}_{sku}_3000_special100",
+            "Download URL": "https://raymourflanigan.scene7.com/is/image/RaymourandFlanigan/FW_{vendor}_{sku}_3000",
+            "File Type": "JPEG",
+            "Product SKU Position": "{sku}_100",
+            "Deliverable": "Product Carousel Image",
+        },
+        {
+            "filename": "FW_{vendor}_{sku}_3000_cozy100.jpg",
+            "name": "FW_{vendor}_{sku}_3000_cozy100",
+            "Download URL": "https://raymourflanigan.scene7.com/is/image/RaymourandFlanigan/FW_{vendor}_{sku}_3000",
+            "File Type": "JPEG",
+            "Product SKU Position": "{sku}_100",
+            "Deliverable": "Product Carousel Image",
+        },
+        {
+            "filename": "FW_{vendor}_{sku}_Alt1_3000.jpg",
+            "name": "FW_{vendor}_{sku}_Alt1_3000",
+            "Download URL": "https://raymourflanigan.scene7.com/is/image/RaymourandFlanigan/FW_{vendor}_{sku}_Alt1_3000",
+            "File Type": "JPEG",
+            "Product SKU Position": "{sku}_200",
+            "Deliverable": "Product Carousel Image",
+        },
+        {
+            "filename": "FW_{vendor}_{sku}_Alt2_3000.jpg",
+            "name": "FW_{vendor}_{sku}_Alt2_3000",
+            "Download URL": "https://raymourflanigan.scene7.com/is/image/RaymourandFlanigan/FW_{vendor}_{sku}_Alt2_3000",
+            "File Type": "JPEG",
+            "Product SKU Position": "{sku}_300",
+            "Deliverable": "Product Carousel Image",
+        },
+        {
+            "filename": "FW_{vendor}_{sku}_Alt3_3000.jpg",
+            "name": "FW_{vendor}_{sku}_Alt3_3000",
+            "Download URL": "https://raymourflanigan.scene7.com/is/image/RaymourandFlanigan/FW_{vendor}_{sku}_Alt3_3000",
+            "File Type": "JPEG",
+            "Product SKU Position": "{sku}_400",
+            "Deliverable": "Product Carousel Image",
+        },
+        {
+            "filename": "FW_{vendor}_{sku}_Alt4_3000.jpg",
+            "name": "FW_{vendor}_{sku}_Alt4_3000",
+            "Download URL": "https://raymourflanigan.scene7.com/is/image/RaymourandFlanigan/FW_{vendor}_{sku}_Alt4_3000",
+            "File Type": "JPEG",
+            "Product SKU Position": "{sku}_500",
+            "Deliverable": "Product Carousel Image",
+        },
         {"filename": "FW_{vendor}_{sku}_Alt5_3000.jpg", "name": "FW_{vendor}_{sku}_Alt5_3000", "Download URL": "https://raymourflanigan.scene7.com/is/image/RaymourandFlanigan/FW_{vendor}_{sku}_Alt5_3000", "File Type": "JPEG", "Product SKU Position": "{sku}_600", "Deliverable": "Product Carousel Image"},
         {"filename": "FW_{vendor}_{sku}_Alt6_3000.jpg", "name": "FW_{vendor}_{sku}_Alt6_3000", "Download URL": "https://raymourflanigan.scene7.com/is/image/RaymourandFlanigan/FW_{vendor}_{sku}_Alt6_3000", "File Type": "JPEG", "Product SKU Position": "{sku}_700", "Deliverable": "Product Carousel Image"},
         {"filename": "FW_{vendor}_{sku}_Alt7_3000.jpg", "name": "FW_{vendor}_{sku}_Alt7_3000", "Download URL": "https://raymourflanigan.scene7.com/is/image/RaymourandFlanigan/FW_{vendor}_{sku}_Alt7_3000", "File Type": "JPEG", "Product SKU Position": "{sku}_800", "Deliverable": "Product Carousel Image"},
@@ -396,143 +500,226 @@ def main():
         {
             "filename": "{sku}_square.jpg",
             "name": "{sku}_square",
+            "Download URL": "",
             "File Type": "JPEG",
-            "Deliverable": "Meta Carousel Square",
             "Product SKU Position": "",
-            "Image Type": "Room Shot",
-            "Asset Type": "Final Creative Materials",
-            "Asset Sub-Type": "Paid Media",
-            "Asset Status": "Final",
-            "Usage Rights": "Approved for External Usage",
-            "Vendor Code": "",
-            "STEP Path": "",
-            "Sync to Site": "",
-            "Product SKU": ""
-        }
-
+            "Deliverable": "Meta Carousel Square",
+            "tags": "{sku}",
+        }        
     ]
 
-    # Initialize lists to hold processed data and SKUs not found in STEP exports
-    parsed_skus = set()  # Use a set to store unique SKUs that have been processed
-    output_data = []     # List to accumulate all generated metadata rows
-    missing_skus = []    # List to track SKUs not found in the STEP reference files
+    output_data = []
+    parsed_skus = set()
+    missing_skus = []  # Track files with missing/invalid SKUs (for end-of-run reporting)
 
-    # Get a list of all supported asset files (images and videos) in the input folder
-    all_assets_in_folder = [f for f in os.listdir(input_folder) if f.lower().endswith(('.jpg', '.jpeg', '.png', '.mp4'))]
+    # Collect all supported asset files (images and videos) in the input folder
+    all_assets_in_folder = [
+        f for f in os.listdir(input_folder) if f.lower().endswith((".jpg", ".jpeg", ".png", ".mp4"))
+    ]
     total_assets = len(all_assets_in_folder)
-    
-    # Process each asset file in the input folder with progress reporting for UI
+
     print(f"Script: Processing {total_assets} assets in '{input_folder}'...")
     for i, filename in enumerate(all_assets_in_folder):
-        # Extract vendor code and SKU from the current filename
         vendor_code, sku = extract_sku_and_vendor_from_filename(filename)
-        is_square_file = bool(re.search(r'^([A-Z0-9]{9})_square\.(jpg|jpeg|png)$', filename, re.IGNORECASE))
-        
+        is_square_file = bool(re.search(r"^([A-Z0-9]{9})_square\.(jpg|jpeg|png)$", filename, re.IGNORECASE))
+
         if is_square_file:
             vendor_code = ""
 
-        
-        # If SKU could not be extracted, skip this file
+        # Validate SKU extraction and length (must be exactly 9 characters)
         if not sku:
-            print(f"Script: Warning: Could not extract SKU/Vendor from filename: {filename}. Skipping.", file=sys.stderr)
+            missing_skus.append("MISSING")
+            print(f"Script: Warning: Could not extract SKU from filename: {filename}. Skipping.", file=sys.stderr)
+            continue
+        if len(str(sku)) != 9:
+            missing_skus.append(str(sku))
+            print(
+                f"Script: Warning: SKU '{sku}' in filename '{filename}' is not 9 characters long. Skipping.",
+                file=sys.stderr,
+            )
             continue
 
         # Enforce vendor code from filename is exactly 4 characters long.
         # If not, stop the entire script with the requested message.
         if not is_square_file:
             if not vendor_code or len(vendor_code) != 4:
-                print("The Vendor Code in your file names is not four characters long. Please correct this and try again.", file=sys.stderr)
+                print(
+                    "The Vendor Code in your file names is not four characters long. Please correct this and try again.",
+                    file=sys.stderr,
+                )
                 sys.exit(1)
-
 
         # Process metadata only once per unique SKU to avoid duplicate row sets
         if sku not in parsed_skus:
             parsed_skus.add(sku)
 
-            # Look up the SKU in the combined reference DataFrame
-            ref_row = df_refs[df_refs['SKU'] == sku]
-
+            # STEP exports removed: always leave STEP Path blank.
             step_path = ""
 
-            if not is_square_file:
-                if not ref_row.empty:
-                    step_path_val = ref_row.iloc[0]['Path']
-                    step_path = step_path_val if pd.notna(step_path_val) else ""
-                else:
-                    missing_skus.append(sku)
-                    print(
-                        f"Script: Warning: SKU '{sku}' not found in STEP exports. 'STEP Path' and 'Product Name (STEP)' will be blank in CSV.",
-                        file=sys.stderr
-                    )
-
             if is_square_file:
-                step_path = ""  # never fill for square images
                 template_to_use = [t for t in template if t.get("Deliverable") == "Meta Carousel Square"]
             else:
                 template_to_use = template
 
-
-            # Generate once
             generated_rows = generate_rows(vendor_code, sku, step_path, template_to_use)
             for row in generated_rows:
                 output_data.append(row)
 
-        
         # --- Send Progress Update to UI ---
-        # This line is critical for external UI applications to track progress.
         progress_percentage = (i + 1) / total_assets * 100
-        print(f"PROGRESS:{progress_percentage:.2f}", flush=True) # print and flush immediately
+        print(f"PROGRESS:{progress_percentage:.2f}", flush=True)
 
-    # Check if any data was processed before attempting to create CSV
     if not output_data:
-        print("Script: No supported asset files found or processed with valid SKUs in the selected folder. No CSV will be generated.", file=sys.stderr)
+        print(
+            "Script: No supported asset files found or processed with valid SKUs in the selected folder. No CSV will be generated.",
+            file=sys.stderr,
+        )
         sys.exit(0)
 
-    # Define the final ordered list of columns for the output CSV
     final_columns = [
-        "filename", "name", "description", "Asset Type", "Asset Sub-Type", "Deliverable", "Product SKU",
-        "Product SKU Position", "Asset Status", "Usage Rights", "tags", "File Type", "STEP Path",
-        "Link to Wrike Project", "Sync to Site", "Generic Dimension Diagram With Measurements", "Admin Status",
-        "Product Status", "Product Category", "Product Sub-Category", "Product Collection",
-        "Component SKUs", "Stock Level (only relevant for Inline products)", "Restock Date (only relevant for Inline products)",
-        "Link to Print Materials", "Link to Lifestyle Images", "Link to Store Images", "Initiative", "Sub-Initiative",
-        "Print Tracking Code", "Print Tracking - Start Date", "Print Tracking - End Date", "Year", "Video Expiration",
-        "Audio Licensing Expiration", "Ad ID", "Lead Offer Message", "Lead Finance Message", "Video Focus",
-        "Video Objective", "Video Type", "Total Run Time (TRT)", "Spot Running (MM/DD/YYYY)", "Language",
-        "Season", "Holiday/Special Occasion", "Talent", "Sunset Date (MM/DD/YYYY)", "Location Name", "Store Code",
-        "Location Status", "Location Address", "Location Town", "Location State", "Location Zip Code",
-        "Location Phone Number", "Location Type", "Location", "Inactive Product", "Partner", "Notes",
-        "Sign Facade Color", "Sign Location", "Sign Color", "Sign Text",
-        "Reviewed products in lifestyle", "Reviewed Studio Uploads", "Featured SKU", "Image Type",
-        "scratchpad", "3D Model Source Files Acquired", "Visible to", "BynderTest", "dim_Length",
-        "Bynder Report", "Dimensions", "dim_Height", "Figmage doc id", "dim_Width", "Figmage image extension",
-        "Figmage node id", "Figmage page id", "Performance Metric", "DNUCampaign", "DNUFeatures",
-        "DNUMaterials", "DNUStyle", "DNUPattern", "DNUPackage SKUs", "DNUSign Size",
-        "DNUDistribution Channel", "Dim diagram re-cropped", "Embedded Instructions (for updating existing metadata based on automations)", "Mattress Size", "Asset Identifier", "Sync Batch", "Marked for Deletion from Site", "scene7 folder", "Variant Type", "Source", "PSA Image Type", "Rights Notes", "Workflow", "Workflow Status",
-        "Product Name (STEP)", "Vendor Code", "Family Code", "Hero SKU", "Product Color", "Dropped",
-        "Visible on Website", "Sales Channel", "Associated Materials Status", "Product in Studio",
-        "DNU_PromoUpdate2", "Additional Files Upload Scratchpad", "Bump", "Carousel Dimensions Diagram Audit", "User Status", "Reviewed for Site Content Refresh", "Image Type Pre-Classification"
+        "filename",
+        "name",
+        "description",
+        "Asset Type",
+        "Asset Sub-Type",
+        "Deliverable",
+        "Product SKU",
+        "Product SKU Position",
+        "Asset Status",
+        "Usage Rights",
+        "tags",
+        "File Type",
+        "STEP Path",
+        "Link to Wrike Project",
+        "Sync to Site",
+        "Generic Dimension Diagram With Measurements",
+        "Admin Status",
+        "Product Status",
+        "Product Category",
+        "Product Sub-Category",
+        "Product Collection",
+        "Component SKUs",
+        "Stock Level (only relevant for Inline products)",
+        "Restock Date (only relevant for Inline products)",
+        "Link to Print Materials",
+        "Link to Lifestyle Images",
+        "Link to Store Images",
+        "Initiative",
+        "Sub-Initiative",
+        "Print Tracking Code",
+        "Print Tracking - Start Date",
+        "Print Tracking - End Date",
+        "Year",
+        "Video Expiration",
+        "Audio Licensing Expiration",
+        "Ad ID",
+        "Lead Offer Message",
+        "Lead Finance Message",
+        "Video Focus",
+        "Video Objective",
+        "Video Type",
+        "Total Run Time (TRT)",
+        "Spot Running (MM/DD/YYYY)",
+        "Language",
+        "Season",
+        "Holiday/Special Occasion",
+        "Talent",
+        "Sunset Date (MM/DD/YYYY)",
+        "Location Name",
+        "Store Code",
+        "Location Status",
+        "Location Address",
+        "Location Town",
+        "Location State",
+        "Location Zip Code",
+        "Location Phone Number",
+        "Location Type",
+        "Location",
+        "Inactive Product",
+        "Partner",
+        "Notes",
+        "Sign Facade Color",
+        "Sign Location",
+        "Sign Color",
+        "Sign Text",
+        "Reviewed products in lifestyle",
+        "Reviewed Studio Uploads",
+        "Featured SKU",
+        "Image Type",
+        "scratchpad",
+        "3D Model Source Files Acquired",
+        "Visible to",
+        "BynderTest",
+        "dim_Length",
+        "Bynder Report",
+        "Dimensions",
+        "dim_Height",
+        "Figmage doc id",
+        "dim_Width",
+        "Figmage image extension",
+        "Figmage node id",
+        "Figmage page id",
+        "Performance Metric",
+        "DNUCampaign",
+        "DNUFeatures",
+        "DNUMaterials",
+        "DNUStyle",
+        "DNUPattern",
+        "DNUPackage SKUs",
+        "DNUSign Size",
+        "DNUDistribution Channel",
+        "Dim diagram re-cropped",
+        "Embedded Instructions (for updating existing metadata based on automations)",
+        "Mattress Size",
+        "Asset Identifier",
+        "Sync Batch",
+        "Marked for Deletion from Site",
+        "scene7 folder",
+        "Variant Type",
+        "Source",
+        "PSA Image Type",
+        "Rights Notes",
+        "Workflow",
+        "Workflow Status",
+        "Product Name (STEP)",
+        "Vendor Code",
+        "Family Code",
+        "Hero SKU",
+        "Product Color",
+        "Dropped",
+        "Visible on Website",
+        "Sales Channel",
+        "Associated Materials Status",
+        "Product in Studio",
+        "DNU_PromoUpdate2",
+        "Additional Files Upload Scratchpad",
+        "Bump",
+        "Carousel Dimensions Diagram Audit",
+        "User Status",
+        "Reviewed for Site Content Refresh",
+        "Image Type Pre-Classification",
     ]
-    # Create the final pandas DataFrame from the accumulated data
-    output_df = pd.DataFrame(output_data, columns=final_columns)
 
-    try:
-        # Save the DataFrame to a semicolon-separated CSV file
-        output_df.to_csv(output_file, sep=';', index=False)
-        print(f"Script: Your metadata importer sheet is ready in your Downloads folder! File saved as: {output_file}")
-    except Exception as e:
-        # Handle errors during saving the CSV file
-        print(f"Script: Error saving CSV file to {output_file}: {e}", file=sys.stderr)
-        sys.exit(1)
+    df_out = pd.DataFrame(output_data)
 
-    # Report any SKUs that were found in filenames but not in the STEP exports
+    # Ensure all expected columns exist
+    for col in final_columns:
+        if col not in df_out.columns:
+            df_out[col] = ""
+
+    # Reorder columns
+    df_out = df_out[final_columns]
+
+    # Export to CSV
+    df_out.to_csv(output_file, sep=";", index=False, encoding="utf-8-sig")
+    print(f"Script: Successfully generated metadata CSV: {output_file}")
+
+    # End-of-run reporting for invalid/missing SKUs
     if missing_skus:
-        print("\n--- Script: SKUs not found in the STEP exports: ---")
-        # Sort and print unique missing SKUs for readability
-        for sku in sorted(list(set(missing_skus))):
-            print(sku)
-        print("Script: These SKUs will have a blank 'STEP Path' and 'Product Name (STEP)' in the CSV.")
+        print("Script: The following missing/invalid SKUs were encountered in filenames:", file=sys.stderr)
+        for sku_val in sorted(list(set(missing_skus))):
+            print(f" - {sku_val}", file=sys.stderr)
 
-# Entry point for the script
+
 if __name__ == "__main__":
     main()

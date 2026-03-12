@@ -3,7 +3,7 @@ import sys
 import pandas as pd
 import requests
 import mimetypes
-from urllib.parse import urlparse, unquote
+from urllib.parse import urlparse, unquote, parse_qsl, urlencode, urlunparse
 from datetime import datetime
 from pathlib import Path
 import tkinter as tk
@@ -58,6 +58,21 @@ def extract_filename_from_url(url):
     parsed = urlparse(url)
     name = os.path.basename(parsed.path)
     return unquote(name)
+
+def normalize_dropbox_url(url):
+    """If a Dropbox URL has dl=0, change it to dl=1."""
+    parsed = urlparse(url)
+
+    if "dropbox.com" not in parsed.netloc.lower():
+        return url
+
+    query_params = dict(parse_qsl(parsed.query, keep_blank_values=True))
+
+    if query_params.get("dl") == "0":
+        query_params["dl"] = "1"
+        parsed = parsed._replace(query=urlencode(query_params))
+
+    return urlunparse(parsed)
 
 def download_and_save(url, dest_folder):
     """Downloads a file from a URL and saves it to the destination folder."""
@@ -153,8 +168,9 @@ def main():
         for col_idx in range(2, 11): # Columns C through K (indices 2-10)
             cell_value = df.iat[row_idx, col_idx]
             if pd.notna(cell_value) and isinstance(cell_value, str) and cell_value.strip():
+                cleaned_url = normalize_dropbox_url(cell_value.strip())
                 urls_to_download.append({
-                    'url': cell_value.strip(),
+                    'url': cleaned_url,
                     'cell_coord': f"{chr(ord('A') + col_idx)}{row_idx + 2}" # +2 for 1-based row and header
                 })
     total_urls_to_process = len(urls_to_download)
@@ -224,3 +240,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
